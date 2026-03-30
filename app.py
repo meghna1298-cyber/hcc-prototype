@@ -285,9 +285,9 @@ with col2:
             st.rerun()
 
 with col1:
-    st.subheader("📋 Interaction Bonuses")
+    st.subheader("📋 Case Summary")
     if interaction_bonus > 0:
-        st.success(f"**Diabetes + CHF Interaction:** +{interaction_bonus:.3f}")
+        st.success(f"**Diabetes + CHF Interaction Bonus:** +{interaction_bonus:.3f}")
     else:
         st.info("No active interaction bonuses. Confirm both Diabetes and Congestive Heart Failure to trigger the +0.112 interaction.")
 
