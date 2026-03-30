@@ -48,7 +48,7 @@ def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
 
 
 def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
-    """Send a clinical note image to GPT vision and extract HCC conditions."""
+    """Send a clinical note image to GPT vision and extract HCC conditions plus patient details."""
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
 
@@ -62,11 +62,22 @@ Carefully read this clinical note image (which may be handwritten or typed/print
 
 {known_conditions}
 
+3. Extract any patient details visible in the note. Use empty string "" if a field is not found.
+
 Respond in this exact JSON format:
 {{
   "extracted_text": "<full transcription of the note>",
   "detected_conditions": ["<condition name from list above>", ...],
-  "clinical_summary": "<1-2 sentence summary of the note>"
+  "clinical_summary": "<1-2 sentence summary of the note>",
+  "patient_details": {{
+    "patient_name": "",
+    "date_of_birth": "",
+    "mrn": "",
+    "insurance_id": "",
+    "date_of_service": "",
+    "provider_name": "",
+    "practice_name": ""
+  }}
 }}
 
 Only include conditions from the provided list. If a condition is not clearly present, do not include it."""
@@ -94,6 +105,10 @@ def merge_ocr_results(results: list[dict]) -> dict:
     all_text = []
     all_conditions = set()
     all_summaries = []
+    merged_patient = {
+        "patient_name": "", "date_of_birth": "", "mrn": "",
+        "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""
+    }
 
     for r in results:
         all_text.append(r.get("extracted_text", ""))
@@ -101,11 +116,16 @@ def merge_ocr_results(results: list[dict]) -> dict:
         summary = r.get("clinical_summary", "")
         if summary:
             all_summaries.append(summary)
+        # Take the first non-empty value found across pages for each field
+        for field in merged_patient:
+            if not merged_patient[field]:
+                merged_patient[field] = r.get("patient_details", {}).get(field, "")
 
     return {
         "extracted_text": "\n\n--- Next Page ---\n\n".join(all_text),
         "detected_conditions": list(all_conditions),
-        "clinical_summary": " ".join(all_summaries)
+        "clinical_summary": " ".join(all_summaries),
+        "patient_details": merged_patient
     }
 
 
@@ -120,6 +140,13 @@ if 'case_status' not in st.session_state:
     st.session_state.case_status = None  # None | "further_docs" | "confirmed"
 if 'case_timestamp' not in st.session_state:
     st.session_state.case_timestamp = None
+if 'patient_details' not in st.session_state:
+    st.session_state.patient_details = {
+        "patient_name": "", "date_of_birth": "", "mrn": "",
+        "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""
+    }
+if 'patient_confirmed' not in st.session_state:
+    st.session_state.patient_confirmed = False
 
 # --- Header ---
 st.title("🩺 AI-Assisted Clinical Coder (v28 Model)")
@@ -193,6 +220,13 @@ if uploaded_file is not None:
                             })
                             existing_terms.add(condition)
                             next_id += 1
+
+                    # Save patient details extracted from the note
+                    if merged.get("patient_details"):
+                        for field, val in merged["patient_details"].items():
+                            if val:
+                                st.session_state.patient_details[field] = val
+                        st.session_state.patient_confirmed = False
 
                     st.session_state.case_status = None
                     st.rerun()
@@ -282,10 +316,46 @@ with col2:
             st.session_state.ocr_result = None
             st.session_state.uploaded_image_bytes = None
             st.session_state.case_status = None
+            st.session_state.patient_details = {
+                "patient_name": "", "date_of_birth": "", "mrn": "",
+                "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""
+            }
+            st.session_state.patient_confirmed = False
             st.rerun()
 
 with col1:
     st.subheader("📋 Case Summary")
+
+    # --- Patient Details Form ---
+    pd_state = st.session_state.patient_details
+    confirmed_icon = "✅" if st.session_state.patient_confirmed else "📝"
+    with st.expander(f"{confirmed_icon} Patient Details", expanded=True):
+        with st.form("patient_details_form"):
+            fa, fb = st.columns(2)
+            with fa:
+                name = st.text_input("Patient Name", value=pd_state.get("patient_name", ""))
+                dob = st.text_input("Date of Birth", value=pd_state.get("date_of_birth", ""))
+                mrn = st.text_input("MRN", value=pd_state.get("mrn", ""))
+                ins = st.text_input("Insurance ID", value=pd_state.get("insurance_id", ""))
+            with fb:
+                dos = st.text_input("Date of Service", value=pd_state.get("date_of_service", ""))
+                provider = st.text_input("Provider Name", value=pd_state.get("provider_name", ""))
+                practice = st.text_input("Practice / Facility", value=pd_state.get("practice_name", ""))
+
+            if st.form_submit_button("✅ Confirm Patient Details", use_container_width=True, type="primary"):
+                st.session_state.patient_details = {
+                    "patient_name": name, "date_of_birth": dob, "mrn": mrn,
+                    "insurance_id": ins, "date_of_service": dos,
+                    "provider_name": provider, "practice_name": practice
+                }
+                st.session_state.patient_confirmed = True
+                st.rerun()
+
+        if st.session_state.patient_confirmed:
+            st.success("Patient details confirmed.")
+
+    st.markdown("---")
+
     if interaction_bonus > 0:
         st.success(f"**Diabetes + CHF Interaction Bonus:** +{interaction_bonus:.3f}")
     else:
