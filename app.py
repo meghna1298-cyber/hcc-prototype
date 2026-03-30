@@ -238,19 +238,38 @@ with col_summary:
     st.subheader("📋 Case Summary")
 
     pd_state = st.session_state.patient_details
-    confirmed_icon = "✅" if st.session_state.patient_confirmed else "📝"
-    with st.expander(f"{confirmed_icon} Patient Details", expanded=True):
+
+    if st.session_state.patient_confirmed:
+        # Read-only confirmed card
+        def _row(label, value):
+            v = value or "—"
+            st.markdown(f"<div style='margin-bottom:8px'><span style='font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.5px'>{label}</span><br><span style='font-size:15px;font-weight:600'>{v}</span></div>", unsafe_allow_html=True)
+
+        st.markdown("#### ✅ Patient Details")
+        _row("Patient Name", pd_state.get("patient_name"))
+        c1, c2 = st.columns(2)
+        with c1:
+            _row("Date of Birth", pd_state.get("date_of_birth"))
+            _row("MRN", pd_state.get("mrn"))
+            _row("Insurance ID", pd_state.get("insurance_id"))
+        with c2:
+            _row("Date of Service", pd_state.get("date_of_service"))
+            _row("Provider", pd_state.get("provider_name"))
+            _row("Practice / Facility", pd_state.get("practice_name"))
+
+        if st.button("✏️ Edit Patient Details", use_container_width=True):
+            st.session_state.patient_confirmed = False
+            st.rerun()
+    else:
+        st.markdown("#### 📝 Patient Details")
         with st.form("patient_details_form"):
-            fa, fb = st.columns(2)
-            with fa:
-                name = st.text_input("Patient Name", value=pd_state.get("patient_name", ""))
-                dob = st.text_input("Date of Birth", value=pd_state.get("date_of_birth", ""))
-                mrn = st.text_input("MRN", value=pd_state.get("mrn", ""))
-                ins = st.text_input("Insurance ID", value=pd_state.get("insurance_id", ""))
-            with fb:
-                dos = st.text_input("Date of Service", value=pd_state.get("date_of_service", ""))
-                provider = st.text_input("Provider Name", value=pd_state.get("provider_name", ""))
-                practice = st.text_input("Practice / Facility", value=pd_state.get("practice_name", ""))
+            name = st.text_input("Patient Name", value=pd_state.get("patient_name", ""))
+            dob = st.text_input("Date of Birth", value=pd_state.get("date_of_birth", ""))
+            mrn = st.text_input("MRN", value=pd_state.get("mrn", ""))
+            ins = st.text_input("Insurance ID", value=pd_state.get("insurance_id", ""))
+            dos = st.text_input("Date of Service", value=pd_state.get("date_of_service", ""))
+            provider = st.text_input("Provider Name", value=pd_state.get("provider_name", ""))
+            practice = st.text_input("Practice / Facility", value=pd_state.get("practice_name", ""))
             if st.form_submit_button("✅ Confirm Patient Details", use_container_width=True, type="primary"):
                 st.session_state.patient_details = {
                     "patient_name": name, "date_of_birth": dob, "mrn": mrn,
@@ -259,8 +278,6 @@ with col_summary:
                 }
                 st.session_state.patient_confirmed = True
                 st.rerun()
-        if st.session_state.patient_confirmed:
-            st.success("Patient details confirmed.")
 
     st.markdown("---")
 
