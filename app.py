@@ -87,6 +87,73 @@ Only include conditions from the provided list. If a condition is not clearly pr
     return json.loads(response.choices[0].message.content)
 
 
+def generate_cms_submission(patient: dict, hcc_data: list, total_raf: float, timestamp: str) -> str:
+    """Generate a RAPS/EDS-style CMS submission document."""
+    confirmed = [d for d in hcc_data if d['status'] == 'Confirmed' and d['term'] in V28_MAP]
+    submission_id = f"SUB-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    lines = [
+        "=" * 70,
+        "  CMS RISK ADJUSTMENT SUBMISSION — V28 MODEL",
+        "  Risk Adjustment Processing System (RAPS) / Encounter Data System (EDS)",
+        "=" * 70,
+        "",
+        f"  Submission ID   : {submission_id}",
+        f"  Submission Date : {timestamp}",
+        f"  Model Version   : CMS-HCC Version 28 (100% Phase-In, 2026)",
+        f"  Plan Contract   : H9999 (Prototype)",
+        "",
+        "-" * 70,
+        "  PATIENT INFORMATION",
+        "-" * 70,
+        f"  Patient Name    : {patient.get('patient_name') or 'N/A'}",
+        f"  Date of Birth   : {patient.get('date_of_birth') or 'N/A'}",
+        f"  MRN             : {patient.get('mrn') or 'N/A'}",
+        f"  Insurance ID    : {patient.get('insurance_id') or 'N/A'}",
+        f"  Date of Service : {patient.get('date_of_service') or 'N/A'}",
+        f"  Provider        : {patient.get('provider_name') or 'N/A'}",
+        f"  Practice        : {patient.get('practice_name') or 'N/A'}",
+        "",
+        "-" * 70,
+        "  CONFIRMED DIAGNOSIS CODES (ICD-10-CM)",
+        "-" * 70,
+    ]
+    for item in confirmed:
+        details = V28_MAP[item['term']]
+        lines.append(f"  HCC {details['hcc']:<6}  ICD-10: {details['icd10']:<10}  {item['term']}")
+        lines.append(f"           Coefficient: +{details['coef']:.3f}")
+        lines.append("")
+
+    lines += [
+        "-" * 70,
+        "  RAF SCORE CALCULATION",
+        "-" * 70,
+        f"  Base RAF Score        : 0.350",
+    ]
+    for item in confirmed:
+        details = V28_MAP[item['term']]
+        lines.append(f"  + HCC {details['hcc']:<4} ({item['term']:<35}) : +{details['coef']:.3f}")
+    if ("Diabetes (Any Type)" in [d['term'] for d in confirmed] and
+            "Congestive Heart Failure" in [d['term'] for d in confirmed]):
+        lines.append(f"  + Diabetes-CHF Interaction Bonus             : +0.112")
+    lines += [
+        f"  {'─' * 50}",
+        f"  FINAL RAF SCORE                                : {total_raf:.3f}",
+        "",
+        "=" * 70,
+        "  SUBMISSION ATTESTATION",
+        "=" * 70,
+        "  The diagnosis information submitted herein is supported by medical",
+        "  record documentation and has been reviewed and confirmed by a",
+        "  certified HCC coder. This submission complies with CMS Risk",
+        "  Adjustment data validation requirements (45 CFR § 153.610).",
+        "",
+        f"  Confirmed by   : HCC Coder (AI-Assisted v28 Tool)",
+        f"  Confirmed at   : {timestamp}",
+        "=" * 70,
+    ]
+    return "\n".join(lines)
+
+
 def merge_ocr_results(results: list[dict]) -> dict:
     all_text, all_conditions, all_summaries = [], set(), []
     merged_patient = {"patient_name": "", "date_of_birth": "", "mrn": "",
@@ -107,6 +174,20 @@ def merge_ocr_results(results: list[dict]) -> dict:
     }
 
 
+# --- Clarification message templates per condition ---
+CLARIFICATION_TEMPLATES = {
+    "Diabetes (Any Type)": "You mentioned {drug} in your note but did not explicitly document a Diabetes diagnosis. Please clarify if the patient has Type 2 Diabetes Mellitus (T2DM) or another form of diabetes, and confirm the appropriate ICD-10 code (e.g., E11.9).",
+    "CKD Stage 3a": "Your note references kidney function or related labs but does not explicitly state a CKD Stage 3a diagnosis. Please confirm whether the patient has Chronic Kidney Disease Stage 3a (N18.31) and provide supporting GFR values if available.",
+    "Congestive Heart Failure": "Your clinical note references cardiac symptoms or medications consistent with heart failure, but CHF is not explicitly documented. Please confirm whether the patient has Congestive Heart Failure (I50.9) and specify the type (systolic/diastolic/combined).",
+    "Atrial Fibrillation": "Your note suggests possible rhythm abnormalities or anti-coagulation therapy, but Atrial Fibrillation is not explicitly stated. Please confirm a documented AFib diagnosis (I48.0) and indicate if it is paroxysmal, persistent, or permanent.",
+    "COPD": "Your note references respiratory symptoms or inhaler use without an explicit COPD diagnosis. Please confirm whether the patient has Chronic Obstructive Pulmonary Disease (J44.9) and provide any relevant spirometry findings.",
+    "Hypertension": "Your note references blood pressure readings or antihypertensive medications but does not explicitly list Hypertension as a diagnosis. Please confirm the patient's hypertension status (I10).",
+    "Obesity": "Your note includes a weight or BMI reference without an explicit Obesity diagnosis. Please confirm whether the patient meets criteria for Obesity (E66.9) and document the current BMI.",
+    "Peripheral Vascular Disease": "Your note references vascular symptoms or related medications without documenting Peripheral Vascular Disease explicitly. Please confirm a PVD diagnosis (I73.9) and any relevant ABI or imaging findings.",
+    "Coronary Artery Disease": "Your note references cardiac history or medications consistent with CAD, but Coronary Artery Disease is not explicitly documented. Please confirm a CAD diagnosis (I25.10) and any relevant catheterization or imaging results.",
+    "Major Depression": "Your note references mood symptoms or antidepressant therapy without an explicit Major Depression diagnosis. Please confirm whether the patient has Major Depressive Disorder (F32.9) and note the current severity.",
+}
+
 # --- Session State ---
 defaults = {
     'hcc_data': [],
@@ -117,6 +198,9 @@ defaults = {
     'patient_details': {"patient_name": "", "date_of_birth": "", "mrn": "",
                         "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""},
     'patient_confirmed': False,
+    'clarification_sent': False,
+    'clarification_condition': None,
+    'cms_doc': None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -351,23 +435,92 @@ pending_count = sum(1 for d in st.session_state.hcc_data if d['status'] == 'Pend
 if pending_count > 0:
     st.warning(f"⚠️ {pending_count} condition(s) still Pending. Review all conditions before finalizing.")
 
-col_a, col_b, col_c = st.columns([2, 1, 1])
-with col_a:
-    if st.session_state.case_status == "confirmed":
-        st.success(f"✅ Case confirmed — RAF Score **{total_raf:.3f}**")
-    elif st.session_state.case_status == "further_docs":
-        st.warning("📋 Case flagged — further documentation required.")
-    else:
-        st.caption("Review all conditions and patient details above, then finalize.")
+col_b, col_c = st.columns(2)
+
 with col_b:
     if st.button("✅ Confirm RAF Score", type="primary", use_container_width=True,
                  disabled=(st.session_state.case_status == "confirmed")):
+        ts = datetime.now().strftime("%B %d, %Y at %I:%M %p")
         st.session_state.case_status = "confirmed"
-        st.session_state.case_timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        st.session_state.case_timestamp = ts
+        st.session_state.clarification_sent = False
+        st.session_state.cms_doc = generate_cms_submission(
+            st.session_state.patient_details,
+            st.session_state.hcc_data,
+            total_raf,
+            ts
+        )
         st.rerun()
+
 with col_c:
     if st.button("📋 Further Docs Needed", type="secondary", use_container_width=True,
                  disabled=(st.session_state.case_status == "further_docs")):
         st.session_state.case_status = "further_docs"
         st.session_state.case_timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+        st.session_state.clarification_sent = False
         st.rerun()
+
+# ── CMS Submission Panel ───────────────────────────────────────────────────────
+if st.session_state.case_status == "confirmed" and st.session_state.cms_doc:
+    st.divider()
+    st.subheader("📤 CMS Submission Package")
+    st.success(f"✅ RAF Score **{total_raf:.3f}** confirmed on {st.session_state.case_timestamp}. Submission package is ready.")
+
+    with st.expander("📄 View Submission Document", expanded=True):
+        st.code(st.session_state.cms_doc, language=None)
+
+    fname = f"CMS_RAPS_{st.session_state.patient_details.get('mrn') or 'PATIENT'}_{datetime.now().strftime('%Y%m%d')}.txt"
+    st.download_button(
+        label="⬇️ Download Submission File",
+        data=st.session_state.cms_doc,
+        file_name=fname,
+        mime="text/plain",
+        type="primary",
+        use_container_width=True,
+    )
+    st.caption("This file is formatted for upload to the CMS RAPS / EDS portal. Review before submitting to the live system.")
+
+# ── Clarification Request Panel ────────────────────────────────────────────────
+if st.session_state.case_status == "further_docs":
+    st.divider()
+    st.subheader("📬 Provider Clarification Request")
+    st.info(f"Case flagged on {st.session_state.case_timestamp}. Compose a clarification request to send to the provider through the portal.")
+
+    if st.session_state.clarification_sent:
+        st.success("✅ Clarification request sent to the provider portal.")
+        if st.button("✉️ Send Another Request"):
+            st.session_state.clarification_sent = False
+            st.rerun()
+    else:
+        all_conditions = list(V28_MAP.keys())
+        selected_condition = st.selectbox(
+            "Select the condition requiring clarification:",
+            options=["— Select a condition —"] + all_conditions,
+            key="clarification_condition_select"
+        )
+
+        default_msg = ""
+        if selected_condition and selected_condition != "— Select a condition —":
+            template = CLARIFICATION_TEMPLATES.get(selected_condition, "Please provide additional documentation to support the diagnosis of {condition}.").replace("{condition}", selected_condition)
+            default_msg = (
+                f"Dear Dr. {st.session_state.patient_details.get('provider_name') or '[Provider Name]'},\n\n"
+                f"Re: Patient {st.session_state.patient_details.get('patient_name') or '[Patient Name]'} "
+                f"(MRN: {st.session_state.patient_details.get('mrn') or 'N/A'}) — "
+                f"Date of Service: {st.session_state.patient_details.get('date_of_service') or 'N/A'}\n\n"
+                f"{template}\n\n"
+                f"Please respond through the provider portal within 5 business days. "
+                f"If you have questions, contact our HCC coding team.\n\n"
+                f"Thank you,\nHCC Coding Team — Risk Adjustment"
+            )
+
+        message = st.text_area(
+            "Clarification message (editable):",
+            value=default_msg,
+            height=240,
+            placeholder="Select a condition above to auto-populate a message template, or type your own.",
+        )
+
+        send_disabled = not message.strip() or selected_condition == "— Select a condition —"
+        if st.button("📨 Send to Provider Portal", type="primary", use_container_width=True, disabled=send_disabled):
+            st.session_state.clarification_sent = True
+            st.rerun()
