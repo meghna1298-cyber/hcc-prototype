@@ -1,15 +1,15 @@
 # Product Requirements Document (PRD)
 ## AI-Assisted Clinical Coder — CMS-HCC Version 28
-**Version:** 1.0  
-**Date:** March 30, 2026  
+**Version:** 1.1  
+**Date:** March 31, 2026  
 **Organization:** Humana  
-**Status:** Draft
+**Status:** Draft — Updated for expanded V28 condition coverage and optimized OCR pipeline
 
 ---
 
 ## 1. Executive Summary
 
-The AI-Assisted Clinical Coder is a web-based tool designed to accelerate and improve the accuracy of HCC (Hierarchical Condition Category) coding for Medicare Advantage risk adjustment. Coders upload handwritten or printed clinical notes; the system reads them using AI-powered OCR, extracts patient demographics and diagnoses, maps them to CMS-HCC Version 28 codes, computes the RAF (Risk Adjustment Factor) score, produces a CMS-ready submission document, and allows follow-up with the provider for further documentation — all within a single workflow.
+The AI-Assisted Clinical Coder is a web-based tool designed to accelerate and improve the accuracy of HCC (Hierarchical Condition Category) coding for Medicare Advantage risk adjustment. Coders upload handwritten or printed clinical notes; the system reads them using AI-powered OCR, extracts patient demographics and diagnoses, maps them to CMS-HCC Version 28 codes, computes the RAF (Risk Adjustment Factor) score, and produces a CMS-ready submission document — all within a single workflow.
 
 ---
 
@@ -75,12 +75,35 @@ The AI-Assisted Clinical Coder is a web-based tool designed to accelerate and im
 ### 5.2 AI-Powered OCR & Condition Extraction
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| F-06 | Transcribe handwritten and printed clinical notes | P0 |
+| F-06 | Transcribe handwritten and printed clinical notes using GPT-5 Vision | P0 |
 | F-07 | Extract patient demographics (name, DOB, MRN, insurance ID, DOS, provider, practice) | P0 |
-| F-08 | Identify HCC-relevant conditions from CMS-HCC V28 model | P0 |
-| F-09 | Map detected conditions to ICD-10-CM codes | P0 |
+| F-08 | Identify HCC-relevant conditions from CMS-HCC V28 model — 90+ conditions across all major disease groups (see V28_MAP registry) | P0 |
+| F-09 | Map detected conditions to ICD-10-CM codes with V28 HCC category numbers and RAF coefficients | P0 |
 | F-10 | Display extracted text and clinical summary to coder | P1 |
 | F-11 | Merge results across all pages of a multi-page PDF | P1 |
+| F-12a | Two-step OCR pipeline: lean vision call for transcription followed by text-only call for V28 condition matching — keeps processing time under 90 seconds regardless of condition library size | P0 |
+
+#### V28_MAP Condition Coverage (90+ conditions)
+The condition registry covers all clinically significant HCC categories from the CMS-HCC V28 model, organized by disease group:
+
+- **Diabetes:** Without complications, with chronic/acute complications, DKA, neuropathy, nephropathy, ophthalmic complications, diabetic foot ulcer
+- **Chronic Kidney Disease:** Stages 3a, 3b, 4, 5 (pre-dialysis), ESRD/Dialysis, Renal Transplant
+- **Heart Conditions:** CHF (systolic/diastolic), CAD, Acute MI, AFib, Atrial Flutter, Cardiomyopathy, Cardiac Arrest, Valvular Heart Disease
+- **COPD & Lung Disease:** COPD, COPD with Acute Exacerbation, Pulmonary Fibrosis, Pulmonary Hypertension, Chronic Respiratory Failure, Asthma, Bronchiectasis
+- **Cancer:** Metastatic, Lung, Breast, Colorectal, Prostate, Lymphoma, Leukemia, Multiple Myeloma, Pancreatic, Head & Neck, Cancer in Remission
+- **Stroke & Neurological:** Ischemic/Hemorrhagic Stroke, Stroke Sequelae, TIA, Hemiplegia, MS, Parkinson's, Epilepsy, Neuropathy, Paraplegia
+- **Vascular Disease:** PVD, Atherosclerosis (with/without gangrene), Aortic Aneurysm, DVT, Pulmonary Embolism
+- **HIV/AIDS:** HIV Infection, AIDS (Advanced)
+- **Major Psychiatric:** Schizophrenia, Schizoaffective Disorder, Bipolar, Major Depression, Dysthymia, Anxiety, PTSD
+- **Substance Use:** Alcohol, Opioid, Cocaine, Cannabis, Polysubstance Use Disorders
+- **Pressure Ulcers:** Stages 2, 3 (necrosis), 4, Unstageable
+- **Amputations:** Lower limb, Upper limb, Bilateral
+- **Dementia:** With/without behavioral disturbance, Alzheimer's, Vascular Dementia
+- **Inflammatory Bowel Disease:** Crohn's Disease, Ulcerative Colitis
+- **Rheumatoid/Inflammatory:** Rheumatoid Arthritis, Psoriatic Arthritis, SLE, Inflammatory Arthritis
+- **Liver Disease:** Cirrhosis, Alcoholic Cirrhosis, Hepatitis B/C, Liver Failure/Hepatic Encephalopathy
+- **Opportunistic Infections:** PCP, Cryptococcal Meningitis, CMV, Systemic Candidiasis, Toxoplasmosis
+- **Other:** Obesity, Morbid Obesity, Malnutrition, Sepsis, Diabetic Foot Ulcer, Chronic Pancreatitis, Osteoporosis with Fracture
 
 ### 5.3 HCC Coding Worklist
 | ID | Requirement | Priority |
