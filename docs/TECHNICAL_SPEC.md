@@ -1,9 +1,9 @@
 # Technical Specification
 ## AI-Assisted Clinical Coder — CMS-HCC Version 28
-**Version:** 1.0  
-**Date:** March 30, 2026  
+**Version:** 1.1  
+**Date:** March 31, 2026  
 **Audience:** Engineering Team  
-**Status:** Draft
+**Status:** Draft — Updated for 90+ condition V28_MAP and two-step OCR pipeline
 
 ---
 
@@ -62,12 +62,36 @@ Streamlit App (Python 3.11, port 5000)
 V28_MAP = {
     "<Condition Name>": {
         "hcc": "<HCC Code>",       # CMS-HCC V28 category number
-        "coef": <float>,           # RAF coefficient
+        "coef": <float>,           # RAF coefficient (community, non-dual)
         "icd10": "<ICD-10-CM>"     # Primary ICD-10-CM code
     }
 }
 ```
-Current conditions: Diabetes, CKD Stage 3a, CHF, Atrial Fibrillation, COPD, Hypertension, Obesity, PVD, CAD, Major Depression.
+
+**Coverage: 90+ conditions across all major CMS-HCC V28 disease groups:**
+
+| Disease Group | Example Conditions |
+|---|---|
+| Diabetes | Without complications → DKA, neuropathy, nephropathy, retinopathy, foot ulcer |
+| Chronic Kidney Disease | Stage 3a through ESRD/Dialysis and Renal Transplant |
+| Heart Conditions | CHF (systolic/diastolic), CAD, Acute MI, AFib, Cardiomyopathy, Cardiac Arrest |
+| COPD & Lung Disease | COPD, COPD exacerbation, Pulmonary Fibrosis, Pulmonary HTN, Chronic Resp Failure |
+| Cancer | Metastatic (RAF 2.488), Lung, Breast, Colorectal, Lymphoma, Leukemia, Remission |
+| Stroke & Neurological | Ischemic/Hemorrhagic Stroke, Sequelae, TIA, Hemiplegia, MS, Parkinson's, Epilepsy |
+| Vascular Disease | PVD, Atherosclerosis ± Gangrene, Aortic Aneurysm, DVT, Pulmonary Embolism |
+| HIV/AIDS | HIV Infection, AIDS |
+| Major Psychiatric | Schizophrenia, Bipolar, Major Depression, Dysthymia, Anxiety, PTSD |
+| Substance Use | Alcohol, Opioid, Cocaine, Cannabis, Polysubstance Use Disorders |
+| Pressure Ulcers | Stages 2, 3 (necrosis), 4, Unstageable |
+| Amputations | Lower, Upper, Bilateral |
+| Dementia | With/without behavioral, Alzheimer's, Vascular Dementia |
+| IBD | Crohn's Disease, Ulcerative Colitis |
+| Rheumatoid/Inflammatory | RA, Psoriatic Arthritis, SLE, Inflammatory Arthritis |
+| Liver Disease | Cirrhosis, Hepatitis B/C, Liver Failure/Encephalopathy |
+| Opportunistic Infections | PCP, Cryptococcal Meningitis, CMV, Candidiasis, Toxoplasmosis |
+| Other | Obesity, Morbid Obesity, Malnutrition, Sepsis, Diabetic Foot Ulcer, Chronic Pancreatitis |
+
+RAF coefficients are sourced from the CMS-HCC Version 28 final model (community, non-dual, non-aged segment). Each entry maps the human-readable condition name (used throughout the UI) to its HCC category, primary ICD-10-CM code, and coefficient.
 
 ### 4.2 HCC Item (session state list)
 ```python
@@ -129,11 +153,24 @@ Current conditions: Diabetes, CKD Stage 3a, CHF, Atrial Fibrillation, COPD, Hype
 - One tuple per page
 
 ### 6.2 `ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict`
-- Base64-encodes image and constructs a data URL
-- Sends to GPT-5 via `chat.completions.create` with vision content
-- System prompt instructs extraction of: raw text, HCC conditions (constrained to V28_MAP keys), clinical summary, patient details
-- Response format: `json_object`
-- Returns parsed JSON dict matching OCR Result shape
+
+Uses a **two-step pipeline** designed to maximize both accuracy and speed:
+
+**Step 1 — Lean Vision Call (`max_completion_tokens=2048`)**
+- Base64-encodes the image and sends to GPT-5 Vision with a minimal prompt
+- Prompt does NOT include the 90+ condition checklist — keeps vision call fast
+- Extracts: verbatim text transcription, raw diagnoses as written, medications, clinical summary, patient details
+- Returns intermediate OCR dict (`extracted_text`, `raw_diagnoses`, `medications`, `patient_details`, `clinical_summary`)
+
+**Step 2 — Text-Only Matching Call (`max_completion_tokens=1024`)**
+- No image — sends only the transcribed text + raw diagnoses + medications to GPT-5
+- Full 90+ condition V28_MAP list is included here (no image = much faster inference)
+- GPT-5 maps clinical content to exact V28_MAP condition names
+- Returns `detected_conditions` list of exact V28_MAP keys
+
+**Architecture rationale:** Vision inference with a large prompt + high token budget (previous design: 8,192 tokens) was the primary source of 3-minute response times. The two-step approach decouples image reading from condition matching — the vision step stays fast (lean prompt, lower token limit), and the matching step runs as cheap text inference. Total end-to-end time: ~45–90 seconds.
+
+Returns merged dict matching OCR Result shape.
 
 ### 6.3 `merge_ocr_results(results: list[dict]) -> dict`
 - Merges results across multiple PDF pages
@@ -154,13 +191,16 @@ Current conditions: Diabetes, CKD Stage 3a, CHF, Atrial Fibrillation, COPD, Hype
 ```python
 base_raf = 0.350
 hcc_sum = sum(V28_MAP[term]["coef"] for term in confirmed_terms if term in V28_MAP)
-interaction_bonus = 0.112 if ("Diabetes (Any Type)" in confirmed_terms
-                               and "Congestive Heart Failure" in confirmed_terms) else 0.0
+# Interaction bonus: any Diabetes variant + any CHF variant
+has_dm  = any(t.startswith("Diabetes") for t in confirmed_terms)
+has_chf = any(t in confirmed_terms for t in
+              ["Congestive Heart Failure", "Systolic Heart Failure", "Diastolic Heart Failure"])
+interaction_bonus = 0.112 if (has_dm and has_chf) else 0.0
 total_raf = base_raf + hcc_sum + interaction_bonus
 ```
 
-**Interaction bonuses implemented:** Diabetes + CHF → +0.112  
-**Planned for future:** Full CMS V28 interaction table (HHS-HCC 2024 model interactions)
+**Interaction bonuses implemented:** Any Diabetes variant + Any CHF variant (Congestive/Systolic/Diastolic) → +0.112  
+**Planned for future:** Full CMS V28 interaction table (HHS-HCC 2024 model interactions, including CKD × Diabetes, CHF × COPD, etc.)
 
 ---
 
@@ -179,11 +219,23 @@ Replit AI Integrations (OpenAI-compatible endpoint)
 `gpt-5` — Released August 7, 2025. Supports image inputs via `image_url` content type.
 
 ### Prompt Design
-- Role: Clinical coding assistant specializing in CMS-HCC V28
-- Constraints: Only return conditions present in the V28_MAP key list
-- Output format: Strictly `json_object` to prevent hallucinated free-text
-- Token limit: `max_completion_tokens=8192`
+
+**Step 1 — Vision prompt (lean, image-focused):**
+- Role: Medical transcriptionist
+- Task: Transcribe note text, list raw diagnoses and medications, extract patient details
+- No condition checklist — keeps prompt short for fast vision inference
+- Output format: `json_object`
+- `max_completion_tokens=2048`
 - Temperature: Not set (defaults to 1, required for gpt-5)
+
+**Step 2 — Text-only matching prompt:**
+- Role: CMS-HCC V28 coding specialist
+- Input: Transcribed text + raw diagnoses + medications from Step 1
+- Task: Map clinical content to exact V28_MAP condition names (full 90+ list provided)
+- Constraint: Only return exact condition names from the list; omit uncertain conditions
+- Output format: `json_object` (`{"detected_conditions": [...]}`)
+- `max_completion_tokens=1024`
+- Temperature: Not set
 
 ### Error Handling
 ```python
@@ -247,12 +299,13 @@ streamlit run app.py --server.port 5000 --server.address 0.0.0.0 --server.headle
 | Session persistence | All state lost on page refresh (no DB) | High |
 | Single-user sessions | No multi-user support; each browser tab is independent | High |
 | PHI handling | No encryption at rest; data only in memory | High |
-| Interaction bonuses | Only Diabetes+CHF implemented; full V28 table needed | Medium |
+| Interaction bonuses | Only Diabetes×CHF implemented; full V28 interaction table has ~20 pairs | Medium |
 | Real CMS API | Submission is document-only; no live RAPS/EDS API call | Medium |
 | Provider portal | Clarification request is simulated only | Medium |
-| HCC code expansion | Only 10 conditions in V28_MAP; full model has 115 HCCs | Medium |
+| HCC code expansion | 90+ conditions covered; full CMS V28 model has 115 HCC categories — remaining gap is ~25 rare/administrative codes | Low |
 | Audit trail | No logging of coder actions | Low |
-| PDF text layer | Currently renders to image even for digital PDFs (slower) | Low |
+| PDF text layer | Currently renders to image even for digital PDFs (slower but required for handwriting support) | Low |
+| OCR response time | Two-step pipeline targets ~45–90 sec; further reduction possible with caching or streaming | Low |
 
 ---
 
