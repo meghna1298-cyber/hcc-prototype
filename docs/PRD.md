@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary
 
-The AI-Assisted Clinical Coder is a web-based tool designed to accelerate and improve the accuracy of HCC (Hierarchical Condition Category) coding for Medicare Advantage risk adjustment. Coders upload handwritten or printed clinical notes; the system reads them using AI-powered OCR, extracts patient demographics and diagnoses, maps them to CMS-HCC Version 28 codes, computes the RAF (Risk Adjustment Factor) score, and produces a CMS-ready submission document — all within a single workflow.
+The AI-Assisted Clinical Coder is a web-based tool designed to accelerate and improve the accuracy of HCC (Hierarchical Condition Category) coding for Medicare Advantage risk adjustment. Coders upload handwritten or printed clinical notes; the system reads them using AI-powered OCR, extracts patient demographics and diagnoses, maps them to CMS-HCC Version 28 codes, computes the RAF (Risk Adjustment Factor) score, produces a CMS-ready submission document, and allows follow-up with the provider for further documentation — all within a single workflow.
 
 ---
 
