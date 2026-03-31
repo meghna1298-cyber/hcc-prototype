@@ -29,6 +29,10 @@ This prototype supports an end-to-end coding workflow:
 
 The current app supports a constrained set of ten conditions in `V28_MAP`, including Diabetes, CKD Stage 3a, CHF, AFib, COPD, Hypertension, Obesity, PVD, CAD, and Major Depression. 
 
+## Data & Privacy
+
+This prototype uses entirely synthetic clinical data. No real patient information, PHI, or de-identified records were used at any stage of development or testing. A production deployment would require a BAA with the LLM provider, PHI minimization at the prompt layer, audit logging, and role-based access controls aligned with the organization's HIPAA compliance framework.
+
 ## Why the AI design is intentional
 
 This is not designed as a black-box coding model.
