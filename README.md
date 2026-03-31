@@ -1,97 +1,110 @@
-# hcc-prototype
-HCC prototype 
-streamlit
-pandas
+# AI-Assisted Clinical Coder — CMS-HCC Version 28
+**Humana Medicare Advantage Risk Adjustment Prototype**  
+Built with GPT-5 Vision · Streamlit · Python · Replit Autoscale
 
-# AI-Assisted Clinical Coder for CMS-HCC V28
+---
 
-An AI-assisted prototype for Medicare Advantage risk adjustment coding that helps clinical coders review notes, identify HCC-relevant conditions, calculate RAF scores, generate a CMS-style submission document, and follow-up with the provider for further documentation, all in one workflow.
+## What It Does
 
-This prototype was built to explore how AI can improve the member risk adjudication and coding process by reducing manual chart review, improving coding consistency, and supporting faster downstream submission workflows. The current implementation uses Streamlit, GPT-5 via Replit AI Integrations, PyMuPDF, and pandas. 
+This tool automates the end-to-end HCC (Hierarchical Condition Category) coding workflow for Medicare Advantage risk adjustment. A coder uploads a handwritten or printed clinical note; the system reads it, extracts diagnoses, maps them to CMS-HCC Version 28 codes, computes the RAF score, and generates a CMS-ready RAPS/EDS submission document — all within a single web interface.
 
-## Problem
+It also handles the **provider documentation loop**: when a diagnosis lacks sufficient supporting documentation, the tool auto-generates a condition-specific provider query pre-filled with the exact clinical evidence required, sending it to the provider in under 60 seconds.
 
-Today, HCC coding and risk adjustment workflows are often fragmented and manual. Coders must read scanned or handwritten notes clinical notes, identify eligible conditions, map them to ICD-10 and HCC categories, calculate RAF impact, and prepare data for submission. In practice, this can create delays, missed conditions, and inconsistent coding decisions. The PRD for this prototype targets reducing coding time per chart to under 3 minutes, improving HCC capture above 95%, and enabling same-day submission.
+---
 
-## What this prototype does
+## Key Capabilities
 
-This prototype supports an end-to-end coding workflow:
+### Comprehensive HCC Coverage — 90+ Conditions Across All Major Disease Groups
 
-- Upload a clinical note as an image or PDF
-- Convert PDFs into page images for review
-- Use AI-powered OCR to transcribe handwritten or printed notes
-- Extract patient demographics and HCC-relevant conditions
-- Map detected conditions to a constrained CMS-HCC V28 registry
-- Let the coder confirm or reject suggested conditions
-- Calculate RAF score impact in real time
-- Generate a CMS-style RAPS/EDS submission document
-- Trigger a clarification workflow when documentation is insufficient
+The V28_MAP condition registry covers the full spectrum of clinically significant HCC categories from the CMS-HCC Version 28 model:
 
-The current app supports a constrained set of ten conditions in `V28_MAP`, including Diabetes, CKD Stage 3a, CHF, AFib, COPD, Hypertension, Obesity, PVD, CAD, and Major Depression. 
+| Disease Group | Conditions Covered |
+|---|---|
+| **Diabetes** | Without complications, with chronic/acute complications, DKA, neuropathy, nephropathy, retinopathy, foot ulcer |
+| **Chronic Kidney Disease** | Stages 3a/3b/4/5, ESRD/Dialysis, Renal Transplant |
+| **Heart Conditions** | CHF (systolic/diastolic), CAD, Acute MI, AFib, Flutter, Cardiomyopathy, Cardiac Arrest, Valvular disease |
+| **COPD & Lung Disease** | COPD, COPD exacerbation, Pulmonary Fibrosis, Pulmonary HTN, Chronic Resp Failure, Asthma, Bronchiectasis |
+| **Cancer** | Metastatic, Lung, Breast, Colorectal, Prostate, Lymphoma, Leukemia, Multiple Myeloma, Pancreatic, H&N, Remission |
+| **Stroke & Neurological** | Ischemic/Hemorrhagic Stroke, Sequelae, TIA, Hemiplegia, MS, Parkinson's, Epilepsy, Neuropathy |
+| **Vascular Disease** | PVD, Atherosclerosis ± Gangrene, Aortic Aneurysm, DVT, Pulmonary Embolism |
+| **HIV/AIDS** | HIV Infection, AIDS (Advanced) |
+| **Major Psychiatric** | Schizophrenia, Schizoaffective, Bipolar, Major Depression, Dysthymia, Anxiety, PTSD |
+| **Substance Use** | Alcohol, Opioid, Cocaine, Cannabis, Polysubstance use disorders |
+| **Pressure Ulcers** | Stages 2, 3 (necrosis), 4, Unstageable |
+| **Amputations** | Lower limb, Upper limb, Bilateral |
+| **Dementia** | With/without behavioral disturbance, Alzheimer's, Vascular Dementia |
+| **Inflammatory Bowel Disease** | Crohn's Disease, Ulcerative Colitis |
+| **Rheumatoid/Inflammatory** | Rheumatoid Arthritis, Psoriatic Arthritis, SLE, Inflammatory Arthritis |
+| **Liver Disease** | Cirrhosis, Alcoholic Cirrhosis, Hepatitis B/C, Liver Failure/Encephalopathy |
+| **Opportunistic Infections** | PCP, Cryptococcal Meningitis, CMV, Systemic Candidiasis, Toxoplasmosis |
+| **Other High-RAF Conditions** | Obesity, Morbid Obesity, Malnutrition, Sepsis, Osteoporosis with Fracture, Chronic Pancreatitis, Diabetic Foot Ulcer |
 
-## Data & Privacy
+Each condition includes the CMS-HCC V28 category number, primary ICD-10-CM code, and RAF coefficient.
 
-This prototype uses entirely synthetic clinical data. No real patient information, PHI, or de-identified records were used at any stage of development or testing. A production deployment would require a BAA with the LLM provider, PHI minimization at the prompt layer, audit logging, and role-based access controls aligned with the organization's HIPAA compliance framework.
+### Two-Step AI OCR Pipeline (Optimized for Speed)
+The AI processing uses a purpose-built two-step pipeline to maximize both accuracy and speed:
 
-## Why the AI design is intentional
+1. **Step 1 — Lean Vision Call:** GPT-5 Vision reads the uploaded image or PDF and performs OCR-only extraction: full text transcription, raw diagnoses as written, medications, patient details, and a clinical summary. This call uses a minimal prompt (no condition checklist) to keep the vision call fast.
 
-This is not designed as a black-box coding model.
+2. **Step 2 — Text-Only Matching:** The transcribed text and extracted diagnoses are passed to a second, image-free GPT-5 call that maps clinical findings to the 90+ condition V28_MAP. Text-only inference is significantly faster than vision calls, keeping total processing time well under 90 seconds.
 
-The prototype uses AI for OCR and information extraction, while keeping coding logic constrained in the application layer. The model is instructed to return only conditions from the known `V28_MAP`, and the app computes RAF and generates the submission document deterministically. This reduces hallucination risk and keeps the workflow reviewable by a human coder. 
+This architecture means coder-facing response time scales independently from the size of the condition library — adding more conditions to V28_MAP does not slow down the vision step.
 
-In other words:
+### Full Workflow
+- Upload handwritten or printed clinical notes (image or multi-page PDF)
+- AI reads the note and pre-fills the HCC worklist and patient form
+- Coder reviews the note side-by-side with AI-extracted data, confirming or rejecting each condition
+- RAF score updates in real-time including CMS-defined interaction bonuses (e.g., Diabetes × CHF = +0.112)
+- One-click CMS RAPS/EDS submission document generation (with 45 CFR §153.610 attestation)
+- Condition-specific provider query composer for the HCP documentation loop — draft and send in under 60 seconds
 
-- **AI handles unstructured input**: reading notes and extracting likely conditions
-- **Application logic handles controlled decision support**: HCC mapping, RAF math, document generation
-- **Human coder stays in the loop**: confirming or rejecting conditions before finalization
+---
 
-## Product goals
+## Technology Stack
 
-This prototype was framed around the following goals:
+| Layer | Technology |
+|---|---|
+| AI Vision & OCR | GPT-5 Vision (OpenAI, via Replit AI Integrations) |
+| HCC Engine | CMS-HCC Version 28 — 90+ conditions, ICD-10-CM, RAF coefficients |
+| PDF Rendering | PyMuPDF (fitz) — multi-page support, 2× zoom for OCR quality |
+| Web Framework | Streamlit (Python 3.11) |
+| Submission Generator | Python — RAPS/EDS format, CMS attestation |
+| Deployment | Replit Autoscale |
+| Version Control | GitHub |
 
-- Reduce coding time per chart from about 12 minutes to under 3 minutes
-- Improve HCC capture rate to above 95%
-- Reduce coding error rate
-- Accelerate chart-to-submission turnaround to same day
-- Improve provider clarification response rates
+---
 
-These goals and targets are documented in the PRD and reflected in the evaluation framework. 
+## Getting Started (Development)
 
-## Evaluation approach
+The app runs automatically on Replit. For local development:
 
-A core part of this project is not just building the workflow, but defining how it should be evaluated before production use.
+```bash
+pip install streamlit openai pymupdf pandas reportlab
+streamlit run app.py --server.port 5000
+```
 
-The evaluation matrix breaks the AI component into three tasks:
+Required environment variables (auto-injected by Replit AI Integrations):
+- `AI_INTEGRATIONS_OPENAI_API_KEY`
+- `AI_INTEGRATIONS_OPENAI_BASE_URL`
 
-1. OCR
-2. HCC condition extraction
-3. Patient demographics extraction
+---
 
-It measures these with task-specific metrics such as:
+## Documentation
 
-- Word Error Rate and Character Error Rate for OCR
-- Precision, Recall, F1, and hallucination rate for condition extraction
-- Field accuracy and completeness for patient details extraction
-- End-to-end coder productivity metrics such as time per chart, throughput, and override rate
+| Document | Description |
+|---|---|
+| [`docs/PRD.md`](docs/PRD.md) | Product Requirements Document |
+| [`docs/TECHNICAL_SPEC.md`](docs/TECHNICAL_SPEC.md) | Technical Specification |
+| [`docs/AI_EVAL_MATRIX.md`](docs/AI_EVAL_MATRIX.md) | AI Evaluation Matrix |
+| [`docs/HCC_Product_Overview.pdf`](docs/HCC_Product_Overview.pdf) | 2-page executive product overview |
 
-For example, the target condition extraction performance is above 92% precision, above 90% recall, and 0% hallucinated conditions outside the supported registry.
+---
 
 ## Demo
 
-- Demo video: https://meghna1298-cyber.github.io/hcc-prototype/
-please view on laptop, not mobile friendly yet
+- **Live App:** [hcc-prototype.replit.app](https://hcc-prototype.replit.app)
+- **Demo Video:** [meghna1298-cyber.github.io/hcc-prototype](https://meghna1298-cyber.github.io/hcc-prototype/)
 
-- Live app: https://hcc-prototype-1--meghna1298.replit.app/ 
-Instructions: Please use this prescription to upload to the OCR for demo purposes. [HCC_Prescription_DrChen.pdf](https://github.com/user-attachments/files/26384705/HCC_Prescription_DrChen.pdf)
-Please view on laptop, not mobile friendly yet
+---
 
-## Repo structure
-
-```text
-.
-├── app.py
-├── requirements.txt
-├── docs/
-│   ├── PRD.md
-│   ├── TECHNICAL_SPEC.md
-│   └── AI_EVAL_MATRIX.md
+*Prototype built for Humana Medicare Advantage Risk Adjustment · CMS-HCC Version 28 · March 2026*
