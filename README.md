@@ -75,6 +75,8 @@ For example, the target condition extraction performance is above 92% precision,
 ## Demo
 
 - Live app: `https://hcc-prototype-1--meghna1298.replit.app/`
+Instructions: Please use this prescription to upload to the OCR for demo purposes. [HCC_Prescription_DrChen.pdf](https://github.com/user-attachments/files/26384705/HCC_Prescription_DrChen.pdf)
+
 - Demo video: `https://meghna1298-cyber.github.io/hcc-prototype/`
 
 ## Repo structure
