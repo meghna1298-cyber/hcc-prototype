@@ -5,13 +5,13 @@ pandas
 
 # AI-Assisted Clinical Coder for CMS-HCC V28
 
-An AI-assisted prototype for Medicare Advantage risk adjustment coding that helps clinical coders review notes, identify HCC-relevant conditions, calculate RAF scores, and generate a CMS-style submission document in one workflow.
+An AI-assisted prototype for Medicare Advantage risk adjustment coding that helps clinical coders review notes, identify HCC-relevant conditions, calculate RAF scores, generate a CMS-style submission document, and follow-up with the provider for further documentation, all in one workflow.
 
-This prototype was built to explore how AI can improve the member risk adjudication and coding process by reducing manual chart review, improving coding consistency, and supporting faster downstream submission workflows. The current implementation uses Streamlit, GPT-5 via Replit AI Integrations, PyMuPDF, and pandas. :contentReference[oaicite:1]{index=1}
+This prototype was built to explore how AI can improve the member risk adjudication and coding process by reducing manual chart review, improving coding consistency, and supporting faster downstream submission workflows. The current implementation uses Streamlit, GPT-5 via Replit AI Integrations, PyMuPDF, and pandas. 
 
 ## Problem
 
-Today, HCC coding and risk adjustment workflows are often fragmented and manual. Coders must read scanned or handwritten notes, identify eligible conditions, map them to ICD-10 and HCC categories, calculate RAF impact, and prepare data for submission. In practice, this can create delays, missed conditions, and inconsistent coding decisions. The PRD for this prototype targets reducing coding time per chart to under 3 minutes, improving HCC capture above 95%, and enabling same-day submission. :contentReference[oaicite:2]{index=2}
+Today, HCC coding and risk adjustment workflows are often fragmented and manual. Coders must read scanned or handwritten notes clinical notes, identify eligible conditions, map them to ICD-10 and HCC categories, calculate RAF impact, and prepare data for submission. In practice, this can create delays, missed conditions, and inconsistent coding decisions. The PRD for this prototype targets reducing coding time per chart to under 3 minutes, improving HCC capture above 95%, and enabling same-day submission.
 
 ## What this prototype does
 
@@ -27,13 +27,13 @@ This prototype supports an end-to-end coding workflow:
 - Generate a CMS-style RAPS/EDS submission document
 - Trigger a clarification workflow when documentation is insufficient
 
-The current app supports a constrained set of ten conditions in `V28_MAP`, including Diabetes, CKD Stage 3a, CHF, AFib, COPD, Hypertension, Obesity, PVD, CAD, and Major Depression. :contentReference[oaicite:3]{index=3}
+The current app supports a constrained set of ten conditions in `V28_MAP`, including Diabetes, CKD Stage 3a, CHF, AFib, COPD, Hypertension, Obesity, PVD, CAD, and Major Depression. 
 
 ## Why the AI design is intentional
 
 This is not designed as a black-box coding model.
 
-The prototype uses AI for OCR and information extraction, while keeping coding logic constrained in the application layer. The model is instructed to return only conditions from the known `V28_MAP`, and the app computes RAF and generates the submission document deterministically. This reduces hallucination risk and keeps the workflow reviewable by a human coder. :contentReference[oaicite:4]{index=4}
+The prototype uses AI for OCR and information extraction, while keeping coding logic constrained in the application layer. The model is instructed to return only conditions from the known `V28_MAP`, and the app computes RAF and generates the submission document deterministically. This reduces hallucination risk and keeps the workflow reviewable by a human coder. 
 
 In other words:
 
@@ -51,7 +51,7 @@ This prototype was framed around the following goals:
 - Accelerate chart-to-submission turnaround to same day
 - Improve provider clarification response rates
 
-These goals and targets are documented in the PRD and reflected in the evaluation framework. :contentReference[oaicite:5]{index=5}
+These goals and targets are documented in the PRD and reflected in the evaluation framework. 
 
 ## Evaluation approach
 
