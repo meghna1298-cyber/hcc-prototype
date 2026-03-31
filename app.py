@@ -160,23 +160,18 @@ def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
 def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
-    known_conditions = "\n".join(f"- {k}" for k in V28_MAP.keys())
-    prompt = f"""You are a clinical coding assistant specializing in CMS-HCC Version 28.
 
-Carefully read this clinical note image (which may be handwritten or typed/printed) and:
-1. Extract all the raw text from the note (OCR)
-2. Identify which of the following HCC-relevant conditions are mentioned or implied:
+    # ── STEP 1: Lean vision call — OCR + raw clinical extraction only ──────────
+    # Keep this prompt short and image-focused; no long condition checklist.
+    ocr_prompt = """You are a medical transcriptionist. Read this clinical note (handwritten or printed) carefully.
 
-{known_conditions}
-
-3. Extract any patient details visible in the note. Use empty string "" if a field is not found.
-
-Respond in this exact JSON format:
-{{
-  "extracted_text": "<full transcription of the note>",
-  "detected_conditions": ["<condition name from list above>", ...],
-  "clinical_summary": "<1-2 sentence summary of the note>",
-  "patient_details": {{
+Return JSON with these fields:
+{
+  "extracted_text": "<complete verbatim transcription of all text in the note>",
+  "raw_diagnoses": ["<each diagnosis, condition, or symptom as written>"],
+  "medications": ["<each medication name mentioned>"],
+  "clinical_summary": "<1-2 sentence clinical summary>",
+  "patient_details": {
     "patient_name": "",
     "date_of_birth": "",
     "mrn": "",
@@ -184,21 +179,58 @@ Respond in this exact JSON format:
     "date_of_service": "",
     "provider_name": "",
     "practice_name": ""
-  }}
-}}
+  }
+}
+Use empty string for any patient field not found. Be thorough with the transcription."""
 
-Only include conditions from the provided list. If a condition is not clearly present, do not include it."""
-
-    response = openai_client.chat.completions.create(
+    vision_resp = openai_client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": [
-            {"type": "text", "text": prompt},
+            {"type": "text", "text": ocr_prompt},
             {"type": "image_url", "image_url": {"url": data_url}}
         ]}],
         response_format={"type": "json_object"},
-        max_completion_tokens=8192
+        max_completion_tokens=2048
     )
-    return json.loads(response.choices[0].message.content)
+    ocr_data = json.loads(vision_resp.choices[0].message.content)
+
+    # ── STEP 2: Text-only call — map clinical findings to V28_MAP keys ─────────
+    # No image = much faster. The condition list is sent here, not in the vision call.
+    known_conditions = "\n".join(f"- {k}" for k in V28_MAP.keys())
+    extracted_text   = ocr_data.get("extracted_text", "")
+    raw_diagnoses    = ", ".join(ocr_data.get("raw_diagnoses", []))
+    medications      = ", ".join(ocr_data.get("medications", []))
+
+    match_prompt = f"""You are a CMS-HCC Version 28 coding specialist.
+
+Given the clinical note content below, identify which conditions from the V28 list are present or clearly implied by the documentation.
+
+NOTE TEXT: {extracted_text}
+RAW DIAGNOSES: {raw_diagnoses}
+MEDICATIONS: {medications}
+
+V28 CONDITIONS:
+{known_conditions}
+
+Return JSON:
+{{"detected_conditions": ["<exact condition name from list>", ...]}}
+
+Only include conditions explicitly documented or strongly implied. Use exact names from the list."""
+
+    match_resp = openai_client.chat.completions.create(
+        model=AI_MODEL,
+        messages=[{"role": "user", "content": match_prompt}],
+        response_format={"type": "json_object"},
+        max_completion_tokens=1024
+    )
+    match_data = json.loads(match_resp.choices[0].message.content)
+
+    return {
+        "extracted_text":    ocr_data.get("extracted_text", ""),
+        "detected_conditions": match_data.get("detected_conditions", []),
+        "clinical_summary":  ocr_data.get("clinical_summary", ""),
+        "patient_details":   ocr_data.get("patient_details", {})
+    }
 
 
 def generate_cms_submission(patient: dict, hcc_data: list, total_raf: float, timestamp: str) -> str:
