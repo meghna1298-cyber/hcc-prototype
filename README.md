@@ -1,5 +1,5 @@
 # AI-Assisted Clinical Coder — CMS-HCC Version 28
-**Humana Medicare Advantage Risk Adjustment Prototype**  
+**Medicare Advantage Risk Adjustment Prototype**  
 Built with GPT-5 Vision · Streamlit · Python · Replit Autoscale
 
 ---
@@ -107,4 +107,4 @@ Required environment variables (auto-injected by Replit AI Integrations):
 
 ---
 
-*Prototype built for Humana Medicare Advantage Risk Adjustment · CMS-HCC Version 28 · March 2026*
+*Prototype built for Medicare Advantage Risk Adjustment · CMS-HCC Version 28 · March 2026*
