@@ -70,7 +70,7 @@ It measures these with task-specific metrics such as:
 - Field accuracy and completeness for patient details extraction
 - End-to-end coder productivity metrics such as time per chart, throughput, and override rate
 
-For example, the target condition extraction performance is above 92% precision, above 90% recall, and 0% hallucinated conditions outside the supported registry. :contentReference[oaicite:6]{index=6}
+For example, the target condition extraction performance is above 92% precision, above 90% recall, and 0% hallucinated conditions outside the supported registry.
 
 ## Demo
 
