@@ -19,16 +19,130 @@ openai_client = OpenAI(
 st.set_page_config(layout="wide", page_title="V28 HCC AI Coder")
 
 V28_MAP = {
-    "Diabetes (Any Type)": {"hcc": "37", "coef": 0.166, "icd10": "E11.9"},
-    "CKD Stage 3a": {"hcc": "329", "coef": 0.288, "icd10": "N18.31"},
+    # ── DIABETES ──────────────────────────────────────────────────────────────
+    "Diabetes without Complications": {"hcc": "37", "coef": 0.166, "icd10": "E11.9"},
+    "Diabetes with Chronic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E11.40"},
+    "Diabetes with Acute Complications": {"hcc": "19", "coef": 0.318, "icd10": "E11.00"},
+    "Diabetes with Ketoacidosis": {"hcc": "17", "coef": 0.560, "icd10": "E11.10"},
+    "Diabetes with Peripheral Neuropathy": {"hcc": "38", "coef": 0.302, "icd10": "E11.40"},
+    "Diabetes with Diabetic Nephropathy": {"hcc": "38", "coef": 0.302, "icd10": "E11.65"},
+    "Diabetes with Ophthalmic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E11.39"},
+    # ── CHRONIC KIDNEY DISEASE ────────────────────────────────────────────────
+    "CKD Stage 3a": {"hcc": "329", "coef": 0.165, "icd10": "N18.31"},
+    "CKD Stage 3b": {"hcc": "328", "coef": 0.165, "icd10": "N18.32"},
+    "CKD Stage 4": {"hcc": "326", "coef": 0.421, "icd10": "N18.4"},
+    "CKD Stage 5 (Pre-Dialysis)": {"hcc": "325", "coef": 0.532, "icd10": "N18.5"},
+    "End-Stage Renal Disease / Dialysis": {"hcc": "134", "coef": 0.421, "icd10": "N18.6"},
+    "Renal Transplant Status": {"hcc": "135", "coef": 0.179, "icd10": "Z94.0"},
+    # ── HEART CONDITIONS ──────────────────────────────────────────────────────
     "Congestive Heart Failure": {"hcc": "226", "coef": 0.360, "icd10": "I50.9"},
-    "Atrial Fibrillation": {"hcc": "238", "coef": 0.299, "icd10": "I48.0"},
-    "COPD": {"hcc": "280", "coef": 0.345, "icd10": "J44.9"},
-    "Hypertension": {"hcc": "136", "coef": 0.201, "icd10": "I10"},
-    "Obesity": {"hcc": "48", "coef": 0.272, "icd10": "E66.9"},
-    "Peripheral Vascular Disease": {"hcc": "108", "coef": 0.288, "icd10": "I73.9"},
+    "Systolic Heart Failure": {"hcc": "225", "coef": 0.487, "icd10": "I50.20"},
+    "Diastolic Heart Failure": {"hcc": "226", "coef": 0.360, "icd10": "I50.30"},
     "Coronary Artery Disease": {"hcc": "86", "coef": 0.217, "icd10": "I25.10"},
+    "Acute Myocardial Infarction": {"hcc": "85", "coef": 0.349, "icd10": "I21.9"},
+    "Atrial Fibrillation": {"hcc": "238", "coef": 0.299, "icd10": "I48.91"},
+    "Atrial Flutter": {"hcc": "238", "coef": 0.299, "icd10": "I48.4"},
+    "Cardiomyopathy": {"hcc": "231", "coef": 0.293, "icd10": "I42.9"},
+    "Cardiac Arrest / Ventricular Fibrillation": {"hcc": "84", "coef": 0.543, "icd10": "I46.9"},
+    "Valvular Heart Disease": {"hcc": "234", "coef": 0.188, "icd10": "I34.0"},
+    "Hypertension": {"hcc": "136", "coef": 0.201, "icd10": "I10"},
+    # ── COPD AND CHRONIC LUNG DISEASE ────────────────────────────────────────
+    "COPD": {"hcc": "280", "coef": 0.345, "icd10": "J44.9"},
+    "COPD with Acute Exacerbation": {"hcc": "279", "coef": 0.398, "icd10": "J44.1"},
+    "Pulmonary Fibrosis / Interstitial Lung Disease": {"hcc": "277", "coef": 0.221, "icd10": "J84.10"},
+    "Pulmonary Hypertension": {"hcc": "276", "coef": 0.577, "icd10": "I27.0"},
+    "Chronic Respiratory Failure": {"hcc": "278", "coef": 0.614, "icd10": "J96.10"},
+    "Asthma": {"hcc": "282", "coef": 0.101, "icd10": "J45.909"},
+    "Bronchiectasis": {"hcc": "281", "coef": 0.239, "icd10": "J47.9"},
+    # ── CANCER (CURRENT) ──────────────────────────────────────────────────────
+    "Metastatic Cancer": {"hcc": "22", "coef": 2.488, "icd10": "C80.1"},
+    "Lung Cancer": {"hcc": "23", "coef": 1.089, "icd10": "C34.10"},
+    "Breast Cancer": {"hcc": "24", "coef": 0.681, "icd10": "C50.919"},
+    "Colorectal Cancer": {"hcc": "24", "coef": 0.681, "icd10": "C18.9"},
+    "Prostate Cancer": {"hcc": "24", "coef": 0.681, "icd10": "C61"},
+    "Lymphoma": {"hcc": "12", "coef": 1.089, "icd10": "C85.90"},
+    "Leukemia": {"hcc": "11", "coef": 0.789, "icd10": "C91.00"},
+    "Multiple Myeloma": {"hcc": "12", "coef": 1.089, "icd10": "C90.00"},
+    "Pancreatic Cancer": {"hcc": "22", "coef": 2.488, "icd10": "C25.9"},
+    "Head and Neck Cancer": {"hcc": "23", "coef": 1.089, "icd10": "C14.8"},
+    "Cancer in Remission (Historical)": {"hcc": "35", "coef": 0.196, "icd10": "Z85.118"},
+    # ── STROKE AND NEUROLOGICAL CONDITIONS ───────────────────────────────────
+    "Ischemic Stroke": {"hcc": "167", "coef": 0.522, "icd10": "I63.9"},
+    "Hemorrhagic Stroke": {"hcc": "166", "coef": 0.662, "icd10": "I61.9"},
+    "Stroke Sequelae / Late Effects": {"hcc": "168", "coef": 0.288, "icd10": "I69.398"},
+    "TIA (Transient Ischemic Attack)": {"hcc": "169", "coef": 0.188, "icd10": "G45.9"},
+    "Hemiplegia / Hemiparesis": {"hcc": "79", "coef": 1.233, "icd10": "G81.90"},
+    "Paraplegia / Spinal Cord Injury": {"hcc": "72", "coef": 0.587, "icd10": "G82.20"},
+    "Multiple Sclerosis": {"hcc": "77", "coef": 0.669, "icd10": "G35"},
+    "Parkinson's Disease": {"hcc": "78", "coef": 0.669, "icd10": "G20"},
+    "Epilepsy": {"hcc": "253", "coef": 0.499, "icd10": "G40.909"},
+    "Neuropathy": {"hcc": "131", "coef": 0.332, "icd10": "G62.9"},
+    # ── VASCULAR DISEASE ──────────────────────────────────────────────────────
+    "Peripheral Vascular Disease": {"hcc": "108", "coef": 0.288, "icd10": "I73.9"},
+    "Atherosclerosis of Extremities": {"hcc": "106", "coef": 0.350, "icd10": "I70.209"},
+    "Atherosclerosis with Gangrene": {"hcc": "105", "coef": 0.799, "icd10": "I70.262"},
+    "Aortic Aneurysm": {"hcc": "107", "coef": 0.577, "icd10": "I71.9"},
+    "Venous Thromboembolism / DVT": {"hcc": "117", "coef": 0.237, "icd10": "I82.401"},
+    "Pulmonary Embolism": {"hcc": "116", "coef": 0.365, "icd10": "I26.99"},
+    # ── HIV / AIDS ────────────────────────────────────────────────────────────
+    "HIV Infection": {"hcc": "1", "coef": 0.335, "icd10": "B20"},
+    "AIDS (Advanced HIV Disease)": {"hcc": "1", "coef": 0.335, "icd10": "B20"},
+    # ── MAJOR PSYCHIATRIC CONDITIONS ─────────────────────────────────────────
+    "Schizophrenia": {"hcc": "57", "coef": 0.456, "icd10": "F20.9"},
+    "Schizoaffective Disorder": {"hcc": "57", "coef": 0.456, "icd10": "F25.9"},
+    "Bipolar Disorder": {"hcc": "58", "coef": 0.395, "icd10": "F31.9"},
     "Major Depression": {"hcc": "59", "coef": 0.395, "icd10": "F32.9"},
+    "Persistent Depressive Disorder (Dysthymia)": {"hcc": "59", "coef": 0.395, "icd10": "F34.1"},
+    "Anxiety Disorder": {"hcc": "60", "coef": 0.175, "icd10": "F41.9"},
+    "Post-Traumatic Stress Disorder (PTSD)": {"hcc": "59", "coef": 0.395, "icd10": "F43.10"},
+    # ── SUBSTANCE USE DISORDERS ───────────────────────────────────────────────
+    "Alcohol Use Disorder": {"hcc": "135", "coef": 0.329, "icd10": "F10.20"},
+    "Opioid Use Disorder": {"hcc": "136", "coef": 0.410, "icd10": "F11.20"},
+    "Cocaine Use Disorder": {"hcc": "136", "coef": 0.410, "icd10": "F14.20"},
+    "Cannabis Use Disorder": {"hcc": "137", "coef": 0.215, "icd10": "F12.20"},
+    "Polysubstance Use Disorder": {"hcc": "136", "coef": 0.410, "icd10": "F19.20"},
+    # ── PRESSURE ULCERS ───────────────────────────────────────────────────────
+    "Pressure Ulcer Stage 3 / Necrosis": {"hcc": "157", "coef": 1.156, "icd10": "L89.153"},
+    "Pressure Ulcer Stage 2": {"hcc": "158", "coef": 0.524, "icd10": "L89.119"},
+    "Pressure Ulcer Stage 4": {"hcc": "156", "coef": 1.524, "icd10": "L89.154"},
+    # ── AMPUTATIONS ───────────────────────────────────────────────────────────
+    "Amputation of Lower Limb": {"hcc": "189", "coef": 0.691, "icd10": "Z89.511"},
+    "Amputation of Upper Limb": {"hcc": "188", "coef": 0.479, "icd10": "Z89.201"},
+    "Bilateral Limb Amputation": {"hcc": "188", "coef": 0.691, "icd10": "Z89.621"},
+    # ── DEMENTIA ──────────────────────────────────────────────────────────────
+    "Dementia with Behavioral Disturbance": {"hcc": "52", "coef": 0.346, "icd10": "F02.81"},
+    "Dementia without Behavioral Disturbance": {"hcc": "53", "coef": 0.346, "icd10": "F03.90"},
+    "Alzheimer's Disease": {"hcc": "52", "coef": 0.346, "icd10": "G30.9"},
+    "Vascular Dementia": {"hcc": "52", "coef": 0.346, "icd10": "F01.51"},
+    # ── INFLAMMATORY BOWEL DISEASE ────────────────────────────────────────────
+    "Crohn's Disease (IBD)": {"hcc": "35", "coef": 0.302, "icd10": "K50.90"},
+    "Ulcerative Colitis (IBD)": {"hcc": "35", "coef": 0.302, "icd10": "K51.90"},
+    # ── RHEUMATOID ARTHRITIS / INFLAMMATORY ──────────────────────────────────
+    "Rheumatoid Arthritis": {"hcc": "40", "coef": 0.421, "icd10": "M05.79"},
+    "Psoriatic Arthritis": {"hcc": "40", "coef": 0.421, "icd10": "L40.54"},
+    "Systemic Lupus Erythematosus (SLE)": {"hcc": "39", "coef": 0.488, "icd10": "M32.9"},
+    "Inflammatory Arthritis (Other)": {"hcc": "40", "coef": 0.302, "icd10": "M06.9"},
+    # ── LIVER DISEASE ─────────────────────────────────────────────────────────
+    "Cirrhosis of the Liver": {"hcc": "29", "coef": 0.965, "icd10": "K74.60"},
+    "Alcoholic Cirrhosis": {"hcc": "29", "coef": 0.965, "icd10": "K70.30"},
+    "Chronic Hepatitis B": {"hcc": "30", "coef": 0.421, "icd10": "B18.1"},
+    "Chronic Hepatitis C": {"hcc": "30", "coef": 0.421, "icd10": "B18.2"},
+    "Liver Failure / Hepatic Encephalopathy": {"hcc": "27", "coef": 1.488, "icd10": "K72.90"},
+    # ── OPPORTUNISTIC INFECTIONS ──────────────────────────────────────────────
+    "Pneumocystis Pneumonia (PCP)": {"hcc": "6", "coef": 0.374, "icd10": "B59"},
+    "Cryptococcal Meningitis": {"hcc": "6", "coef": 0.374, "icd10": "B45.1"},
+    "Cytomegalovirus (CMV) Disease": {"hcc": "6", "coef": 0.374, "icd10": "B25.9"},
+    "Candidiasis (Systemic)": {"hcc": "6", "coef": 0.374, "icd10": "B37.1"},
+    "Toxoplasmosis": {"hcc": "6", "coef": 0.374, "icd10": "B58.9"},
+    # ── ADDITIONAL COMMON CONDITIONS ─────────────────────────────────────────
+    "Obesity": {"hcc": "48", "coef": 0.272, "icd10": "E66.9"},
+    "Morbid Obesity": {"hcc": "47", "coef": 0.411, "icd10": "E66.01"},
+    "Malnutrition": {"hcc": "21", "coef": 0.587, "icd10": "E41"},
+    "Septicemia / Sepsis": {"hcc": "3", "coef": 0.514, "icd10": "A41.9"},
+    "Pressure Injury (Unstageable)": {"hcc": "156", "coef": 1.156, "icd10": "L89.130"},
+    "Diabetic Foot Ulcer": {"hcc": "38", "coef": 0.388, "icd10": "E11.621"},
+    "Chronic Pancreatitis": {"hcc": "34", "coef": 0.290, "icd10": "K86.1"},
+    "Osteoporosis with Pathological Fracture": {"hcc": "170", "coef": 0.434, "icd10": "M80.00XA"},
 }
 
 
@@ -132,8 +246,10 @@ def generate_cms_submission(patient: dict, hcc_data: list, total_raf: float, tim
     for item in confirmed:
         details = V28_MAP[item['term']]
         lines.append(f"  + HCC {details['hcc']:<4} ({item['term']:<35}) : +{details['coef']:.3f}")
-    if ("Diabetes (Any Type)" in [d['term'] for d in confirmed] and
-            "Congestive Heart Failure" in [d['term'] for d in confirmed]):
+    confirmed_term_list = [d['term'] for d in confirmed]
+    has_dm = any(t.startswith("Diabetes") for t in confirmed_term_list)
+    has_chf = any(t in confirmed_term_list for t in ["Congestive Heart Failure", "Systolic Heart Failure", "Diastolic Heart Failure"])
+    if has_dm and has_chf:
         lines.append(f"  + Diabetes-CHF Interaction Bonus             : +0.112")
     lines += [
         f"  {'─' * 50}",
@@ -176,16 +292,89 @@ def merge_ocr_results(results: list[dict]) -> dict:
 
 # --- Clarification message templates per condition ---
 CLARIFICATION_TEMPLATES = {
-    "Diabetes (Any Type)": "You mentioned {drug} in your note but did not explicitly document a Diabetes diagnosis. Please clarify if the patient has Type 2 Diabetes Mellitus (T2DM) or another form of diabetes, and confirm the appropriate ICD-10 code (e.g., E11.9).",
-    "CKD Stage 3a": "Your note references kidney function or related labs but does not explicitly state a CKD Stage 3a diagnosis. Please confirm whether the patient has Chronic Kidney Disease Stage 3a (N18.31) and provide supporting GFR values if available.",
-    "Congestive Heart Failure": "Your clinical note references cardiac symptoms or medications consistent with heart failure, but CHF is not explicitly documented. Please confirm whether the patient has Congestive Heart Failure (I50.9) and specify the type (systolic/diastolic/combined).",
-    "Atrial Fibrillation": "Your note suggests possible rhythm abnormalities or anti-coagulation therapy, but Atrial Fibrillation is not explicitly stated. Please confirm a documented AFib diagnosis (I48.0) and indicate if it is paroxysmal, persistent, or permanent.",
-    "COPD": "Your note references respiratory symptoms or inhaler use without an explicit COPD diagnosis. Please confirm whether the patient has Chronic Obstructive Pulmonary Disease (J44.9) and provide any relevant spirometry findings.",
-    "Hypertension": "Your note references blood pressure readings or antihypertensive medications but does not explicitly list Hypertension as a diagnosis. Please confirm the patient's hypertension status (I10).",
-    "Obesity": "Your note includes a weight or BMI reference without an explicit Obesity diagnosis. Please confirm whether the patient meets criteria for Obesity (E66.9) and document the current BMI.",
-    "Peripheral Vascular Disease": "Your note references vascular symptoms or related medications without documenting Peripheral Vascular Disease explicitly. Please confirm a PVD diagnosis (I73.9) and any relevant ABI or imaging findings.",
+    # Diabetes
+    "Diabetes without Complications": "Your note references glucose-lowering medications or elevated glucose but does not explicitly document a Diabetes diagnosis. Please confirm Type 2 Diabetes Mellitus (E11.9) and note any current complications.",
+    "Diabetes with Chronic Complications": "Your note references diabetic complications but does not explicitly document the underlying Diabetes with Chronic Complications (E11.40). Please confirm the diagnosis and specify which chronic complications are present.",
+    "Diabetes with Acute Complications": "Your note suggests an acute diabetic event. Please confirm whether the patient has Diabetes with Acute Complications (E11.00) and specify the nature of the acute complication.",
+    "Diabetes with Ketoacidosis": "Your note references symptoms consistent with DKA. Please confirm a Diabetes with Ketoacidosis diagnosis (E11.10) and provide the most recent blood glucose and pH values.",
+    "Diabetes with Peripheral Neuropathy": "Your note references neuropathic symptoms in a diabetic patient. Please confirm Diabetes with Peripheral Neuropathy (E11.40) and document the neuropathy type and affected sites.",
+    "Diabetes with Diabetic Nephropathy": "Your note suggests diabetic kidney involvement. Please confirm Diabetes with Diabetic Nephropathy (E11.65) and provide the most recent eGFR and urine albumin/creatinine ratio.",
+    "Diabetes with Ophthalmic Complications": "Your note references visual symptoms or ophthalmology follow-up in a diabetic patient. Please confirm Diabetes with Ophthalmic Complications (E11.39) and specify the type of retinopathy or other eye finding.",
+    "Diabetic Foot Ulcer": "Your note references a wound or ulcer on the foot in a diabetic patient. Please confirm a Diabetic Foot Ulcer diagnosis (E11.621), document the wound grade (Wagner scale), and note current wound care.",
+    # CKD
+    "CKD Stage 3a": "Your note references kidney function or related labs but does not explicitly state a CKD Stage 3a diagnosis. Please confirm CKD Stage 3a (N18.31) and provide supporting GFR values (45–59 mL/min).",
+    "CKD Stage 3b": "Your note suggests reduced kidney function. Please confirm CKD Stage 3b (N18.32) and provide the most recent eGFR value (30–44 mL/min) and any albuminuria results.",
+    "CKD Stage 4": "Your note suggests significantly reduced kidney function. Please confirm CKD Stage 4 (N18.4) and provide the most recent eGFR (15–29 mL/min) and nephrology referral documentation.",
+    "CKD Stage 5 (Pre-Dialysis)": "Your note suggests severe kidney failure. Please confirm CKD Stage 5 without dialysis (N18.5), provide the most recent eGFR (<15 mL/min), and clarify whether dialysis has been initiated.",
+    "End-Stage Renal Disease / Dialysis": "Your note references dialysis or ESRD but does not explicitly document the diagnosis. Please confirm End-Stage Renal Disease with dialysis (N18.6) and specify the dialysis modality (hemodialysis/peritoneal).",
+    # Heart
+    "Congestive Heart Failure": "Your clinical note references cardiac symptoms or medications consistent with heart failure, but CHF is not explicitly documented. Please confirm Congestive Heart Failure (I50.9) and specify the type (systolic/diastolic/combined).",
+    "Systolic Heart Failure": "Your note suggests systolic dysfunction. Please confirm Systolic Heart Failure (I50.20), provide the most recent ejection fraction, and note current NYHA class.",
+    "Diastolic Heart Failure": "Your note suggests diastolic dysfunction. Please confirm Diastolic Heart Failure (I50.30) and provide most recent echocardiographic findings.",
     "Coronary Artery Disease": "Your note references cardiac history or medications consistent with CAD, but Coronary Artery Disease is not explicitly documented. Please confirm a CAD diagnosis (I25.10) and any relevant catheterization or imaging results.",
-    "Major Depression": "Your note references mood symptoms or antidepressant therapy without an explicit Major Depression diagnosis. Please confirm whether the patient has Major Depressive Disorder (F32.9) and note the current severity.",
+    "Acute Myocardial Infarction": "Your note suggests a recent cardiac event. Please confirm Acute Myocardial Infarction (I21.9), provide the date of onset, troponin results, and any intervention performed (PCI/CABG).",
+    "Atrial Fibrillation": "Your note suggests possible rhythm abnormalities or anticoagulation therapy, but Atrial Fibrillation is not explicitly stated. Please confirm a documented AFib diagnosis (I48.91) and indicate if it is paroxysmal, persistent, or permanent.",
+    "Cardiomyopathy": "Your note references cardiomegaly or reduced cardiac function. Please confirm Cardiomyopathy (I42.9), specify the type (dilated/hypertrophic/restrictive), and provide the most recent echocardiographic ejection fraction.",
+    # Lung
+    "COPD": "Your note references respiratory symptoms or inhaler use without an explicit COPD diagnosis. Please confirm Chronic Obstructive Pulmonary Disease (J44.9) and provide any relevant spirometry findings (FEV1/FVC ratio).",
+    "COPD with Acute Exacerbation": "Your note suggests a COPD flare. Please confirm COPD with Acute Exacerbation (J44.1), document the precipitating factor, and note any systemic corticosteroid or antibiotic treatment.",
+    "Pulmonary Fibrosis / Interstitial Lung Disease": "Your note references respiratory symptoms or CT findings consistent with ILD. Please confirm Pulmonary Fibrosis (J84.10) and provide the most recent HRCT findings and pulmonary function test results.",
+    "Pulmonary Hypertension": "Your note references elevated pulmonary pressures or right heart strain. Please confirm Pulmonary Hypertension (I27.0), specify the WHO group, and provide the most recent right heart catheterization or echocardiographic RVSP.",
+    "Chronic Respiratory Failure": "Your note suggests chronic hypoxia or ventilatory failure. Please confirm Chronic Respiratory Failure (J96.10), specify whether it is hypoxic or hypercapnic, and document home oxygen or ventilator use.",
+    # Cancer
+    "Metastatic Cancer": "Your note references cancer with possible spread. Please confirm Metastatic Cancer (C80.1), identify the primary site and sites of metastasis, and provide the most recent oncology note or imaging confirming metastatic disease.",
+    "Lung Cancer": "Your note references a pulmonary mass or oncology treatment. Please confirm Lung Cancer (C34.10), specify the histological type and stage, and provide the most recent pathology or imaging report.",
+    "Breast Cancer": "Your note references breast cancer history or treatment. Please confirm active Breast Cancer (C50.919), specify the stage and receptor status, and provide the date of most recent oncology visit.",
+    "Lymphoma": "Your note references lymphadenopathy or oncology treatment consistent with lymphoma. Please confirm the Lymphoma diagnosis (C85.90), specify the type (Hodgkin vs. Non-Hodgkin), and provide the most recent pathology report.",
+    "Leukemia": "Your note references hematologic malignancy. Please confirm Leukemia (C91.00), specify the type (ALL/CLL/AML/CML), and provide the most recent CBC and oncology note.",
+    "Cancer in Remission (Historical)": "Your note references a prior cancer diagnosis. Please confirm Cancer in Remission (Z85.118), specify the original cancer type and site, and document the date remission was established.",
+    # Stroke / Neuro
+    "Ischemic Stroke": "Your note references neurological symptoms or TPA use consistent with stroke. Please confirm Ischemic Stroke (I63.9), provide the date of onset, neuroimaging findings, and NIH Stroke Scale score at presentation.",
+    "Stroke Sequelae / Late Effects": "Your note references residual neurological deficits from a prior stroke. Please confirm Stroke Late Effects (I69.398), specify the deficits (aphasia, hemiplegia, dysphagia), and note the date of the original stroke.",
+    "Hemiplegia / Hemiparesis": "Your note references one-sided weakness or paralysis. Please confirm Hemiplegia (G81.90), specify the affected side and whether it is flaccid or spastic, and provide the underlying etiology.",
+    "Multiple Sclerosis": "Your note references MS or demyelinating disease. Please confirm Multiple Sclerosis (G35), specify the type (RRMS/SPMS/PPMS), and document the most recent MRI findings and neurologist note.",
+    "Parkinson's Disease": "Your note references parkinsonism or Parkinson's medications. Please confirm Parkinson's Disease (G20), document the current H&Y stage, and note the medication regimen and most recent neurology visit.",
+    "Epilepsy": "Your note references seizures or anti-epileptic medications without explicitly documenting Epilepsy. Please confirm Epilepsy (G40.909), specify the seizure type, and note current AED medications and most recent EEG.",
+    "Dementia with Behavioral Disturbance": "Your note references cognitive decline with behavioral symptoms. Please confirm Dementia with Behavioral Disturbance (F02.81), specify the type (Alzheimer's/vascular/Lewy body), and document a formal cognitive assessment (e.g., MMSE or MoCA score).",
+    "Dementia without Behavioral Disturbance": "Your note references cognitive decline without explicit behavioral symptoms. Please confirm Dementia (F03.90), specify the underlying etiology, and document a formal cognitive assessment.",
+    "Alzheimer's Disease": "Your note references memory loss or Alzheimer's medications. Please confirm Alzheimer's Disease (G30.9), provide the most recent cognitive assessment score, and document any specialist evaluation.",
+    # Vascular
+    "Peripheral Vascular Disease": "Your note references vascular symptoms or related medications without documenting PVD explicitly. Please confirm Peripheral Vascular Disease (I73.9) and provide any relevant ABI or vascular imaging findings.",
+    "Atherosclerosis with Gangrene": "Your note references critical limb ischemia or tissue loss. Please confirm Atherosclerosis with Gangrene (I70.262), document the affected limb, and note whether revascularization has been performed or planned.",
+    "Aortic Aneurysm": "Your note references aortic dilation or an aneurysm incidentally noted. Please confirm Aortic Aneurysm (I71.9), provide the most recent imaging measurement, and note whether surveillance or intervention is planned.",
+    "Pulmonary Embolism": "Your note references acute dyspnea or anticoagulation consistent with PE. Please confirm Pulmonary Embolism (I26.99), provide the diagnostic imaging report (CT-PA), and document the current anticoagulation plan.",
+    # HIV
+    "HIV Infection": "Your note references antiretroviral medications or HIV-related labs but does not explicitly document an HIV diagnosis. Please confirm HIV Infection (B20) and provide the most recent CD4 count and viral load.",
+    "AIDS (Advanced HIV Disease)": "Your note suggests advanced HIV disease. Please confirm AIDS (B20), document the most recent CD4 count (<200 cells/µL), viral load, and any current opportunistic infection prophylaxis.",
+    # Psychiatric
+    "Schizophrenia": "Your note references antipsychotic medications or psychotic symptoms without explicitly documenting Schizophrenia. Please confirm a Schizophrenia diagnosis (F20.9) and provide the most recent psychiatric evaluation note.",
+    "Bipolar Disorder": "Your note references mood stabilizers or cycling mood symptoms. Please confirm Bipolar Disorder (F31.9), specify the type (I/II/unspecified), and note the current mood episode and medication regimen.",
+    "Major Depression": "Your note references mood symptoms or antidepressant therapy without an explicit Major Depression diagnosis. Please confirm Major Depressive Disorder (F32.9) and note the current severity (mild/moderate/severe).",
+    "Post-Traumatic Stress Disorder (PTSD)": "Your note references trauma history or PTSD medications. Please confirm a PTSD diagnosis (F43.10), document the traumatic event category, and note the current treatment plan.",
+    # Substance Use
+    "Alcohol Use Disorder": "Your note references alcohol consumption or hepatic changes consistent with AUD. Please confirm Alcohol Use Disorder (F10.20), specify the severity (mild/moderate/severe), and note whether the patient is currently in treatment.",
+    "Opioid Use Disorder": "Your note references opioid medications or withdrawal symptoms. Please confirm Opioid Use Disorder (F11.20), specify the severity, and document any MAT (methadone/buprenorphine) currently prescribed.",
+    # Liver
+    "Cirrhosis of the Liver": "Your note references hepatic dysfunction or portal hypertension. Please confirm Cirrhosis (K74.60), specify the Child-Pugh class, and provide the most recent liver function tests and imaging.",
+    "Chronic Hepatitis C": "Your note references antiviral treatment or liver enzyme elevation consistent with Hepatitis C. Please confirm Chronic Hepatitis C (B18.2), provide the most recent viral load and genotype, and note treatment history.",
+    "Liver Failure / Hepatic Encephalopathy": "Your note references altered mentation or hepatic decompensation. Please confirm Liver Failure or Hepatic Encephalopathy (K72.90), document the precipitating cause, and provide ammonia levels and LFTs.",
+    # Opportunistic Infections
+    "Pneumocystis Pneumonia (PCP)": "Your note references respiratory symptoms and immunosuppression consistent with PCP. Please confirm Pneumocystis Pneumonia (B59), provide the BAL or biopsy results, and document the current treatment and prophylaxis regimen.",
+    # Other
+    "Hypertension": "Your note references blood pressure readings or antihypertensive medications but does not explicitly list Hypertension as a diagnosis. Please confirm the patient's hypertension status (I10) and provide the most recent BP readings.",
+    "Obesity": "Your note includes a weight or BMI reference without an explicit Obesity diagnosis. Please confirm whether the patient meets criteria for Obesity (E66.9) and document the current BMI.",
+    "Morbid Obesity": "Your note references extreme weight or bariatric history. Please confirm Morbid Obesity (E66.01), document the current BMI (≥40), and note any obesity-related comorbidities.",
+    "Septicemia / Sepsis": "Your note references systemic infection or sepsis criteria. Please confirm Septicemia/Sepsis (A41.9), identify the suspected source and organism, and document the SOFA score and antibiotic regimen.",
+    "Rheumatoid Arthritis": "Your note references joint inflammation or DMARD therapy consistent with RA. Please confirm Rheumatoid Arthritis (M05.79), provide the most recent RF/anti-CCP results, and note the current disease-modifying therapy.",
+    "Systemic Lupus Erythematosus (SLE)": "Your note references autoimmune symptoms or immunosuppressive therapy consistent with SLE. Please confirm SLE (M32.9), provide the most recent ANA/anti-dsDNA titers, and note the current treatment plan.",
+    "Crohn's Disease (IBD)": "Your note references GI symptoms or IBD medications. Please confirm Crohn's Disease (K50.90), document the disease location and activity (Harvey-Bradshaw Index or SES-CD), and note current therapy.",
+    "Ulcerative Colitis (IBD)": "Your note references GI symptoms or IBD medications. Please confirm Ulcerative Colitis (K51.90), document the disease extent and activity (Mayo Score), and note current therapy.",
+    "Pressure Ulcer Stage 2": "Your note references a skin wound or pressure injury. Please confirm Pressure Ulcer Stage 2 (L89.119), document the anatomical location, size, and current wound care plan.",
+    "Pressure Ulcer Stage 3 / Necrosis": "Your note references a deep pressure wound. Please confirm Pressure Ulcer Stage 3 (L89.153), document the anatomical location, wound measurements, and current wound care and offloading plan.",
+    "Pressure Ulcer Stage 4": "Your note references a severe pressure wound with tissue loss. Please confirm Pressure Ulcer Stage 4 (L89.154), document exposed structures (bone/tendon), and note the current wound care, surgical, or palliative plan.",
+    "Amputation of Lower Limb": "Your note references a lower extremity amputation. Please confirm Amputation of Lower Limb status (Z89.511), specify the level (toe/transmetatarsal/BKA/AKA), and note the date of amputation and current prosthetic use.",
+    "Malnutrition": "Your note references weight loss, low albumin, or inadequate intake. Please confirm Malnutrition (E41), specify the severity (mild/moderate/severe), and document a formal nutrition assessment or dietitian evaluation.",
+    "Osteoporosis with Pathological Fracture": "Your note references a fracture in the setting of low bone density. Please confirm Osteoporosis with Pathological Fracture (M80.00XA), document the fracture site, and provide the most recent DXA T-score.",
 }
 
 # --- Session State ---
@@ -212,7 +401,8 @@ st.caption("CMS-HCC Version 28 | 100% Phase-in Compliance (2026)")
 
 confirmed_terms_top = [d['term'] for d in st.session_state.hcc_data if d['status'] == 'Confirmed']
 if st.session_state.case_status == "confirmed":
-    ib = 0.112 if ("Diabetes (Any Type)" in confirmed_terms_top and "Congestive Heart Failure" in confirmed_terms_top) else 0.0
+    ib = 0.112 if (any(t.startswith("Diabetes") for t in confirmed_terms_top) and
+                   any(t in confirmed_terms_top for t in ["Congestive Heart Failure", "Systolic Heart Failure", "Diastolic Heart Failure"])) else 0.0
     fr = 0.350 + sum(V28_MAP[d['term']]['coef'] for d in st.session_state.hcc_data if d['status'] == 'Confirmed' and d['term'] in V28_MAP) + ib
     st.success(f"✅ **Case Confirmed** — RAF Score locked at **{fr:.3f}** on {st.session_state.case_timestamp}")
 elif st.session_state.case_status == "further_docs":
@@ -292,7 +482,8 @@ base_raf = 0.350
 confirmed_hccs = [V28_MAP[d['term']] for d in st.session_state.hcc_data if d['status'] == 'Confirmed' and d['term'] in V28_MAP]
 hcc_sum = sum(h['coef'] for h in confirmed_hccs)
 confirmed_terms = [d['term'] for d in st.session_state.hcc_data if d['status'] == 'Confirmed']
-interaction_bonus = 0.112 if ("Diabetes (Any Type)" in confirmed_terms and "Congestive Heart Failure" in confirmed_terms) else 0.0
+interaction_bonus = 0.112 if (any(t.startswith("Diabetes") for t in confirmed_terms) and
+                              any(t in confirmed_terms for t in ["Congestive Heart Failure", "Systolic Heart Failure", "Diastolic Heart Failure"])) else 0.0
 total_raf = base_raf + hcc_sum + interaction_bonus
 
 # ── Three-panel review layout ─────────────────────────────────────────────────
