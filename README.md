@@ -88,6 +88,12 @@ Required environment variables (auto-injected by Replit AI Integrations):
 - `AI_INTEGRATIONS_OPENAI_BASE_URL`
 
 ---
+## Demo
+
+- **Demo Video:** [meghna1298-cyber.github.io/hcc-prototype](https://meghna1298-cyber.github.io/hcc-prototype/)
+- **Live App:** [hcc-prototype.replit.app](https://hcc-prototype.replit.app)
+
+---
 
 ## Documentation
 
@@ -97,13 +103,6 @@ Required environment variables (auto-injected by Replit AI Integrations):
 | [`docs/TECHNICAL_SPEC.md`](docs/TECHNICAL_SPEC.md) | Technical Specification |
 | [`docs/AI_EVAL_MATRIX.md`](docs/AI_EVAL_MATRIX.md) | AI Evaluation Matrix |
 | [`docs/HCC_Product_Overview.pdf`](docs/HCC_Product_Overview.pdf) | 2-page executive product overview |
-
----
-
-## Demo
-
-- **Live App:** [hcc-prototype.replit.app](https://hcc-prototype.replit.app)
-- **Demo Video:** [meghna1298-cyber.github.io/hcc-prototype](https://meghna1298-cyber.github.io/hcc-prototype/)
 
 ---
 
