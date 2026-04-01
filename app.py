@@ -148,12 +148,30 @@ V28_MAP = {
 
 
 def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
+    """Render PDF pages to images.
+
+    Portrait pages (tall clinical notes) are split into top and bottom halves
+    so the vision model gets a focused view of each section — otherwise it tends
+    to read the header well but miss the patient block and ICD table below it.
+    """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
+    mat = fitz.Matrix(2.5, 2.5)   # 2.5x zoom — good balance of clarity vs. size
+
     for page in doc:
-        mat = fitz.Matrix(3.0, 3.0)   # 3x zoom (216 DPI) for legibility on dense notes
-        pix = page.get_pixmap(matrix=mat)
-        images.append((pix.tobytes("png"), "image/png"))
+        r = page.rect  # page rect in PDF points (before zoom)
+        if r.height > r.width:
+            # Portrait page — split into top half and bottom half
+            mid = r.height / 2
+            for clip in [fitz.Rect(0, 0, r.width, mid),
+                         fitz.Rect(0, mid, r.width, r.height)]:
+                pix = page.get_pixmap(matrix=mat, clip=clip)
+                images.append((pix.tobytes("png"), "image/png"))
+        else:
+            # Landscape page — use as-is
+            pix = page.get_pixmap(matrix=mat)
+            images.append((pix.tobytes("png"), "image/png"))
+
     doc.close()
     return images
 
@@ -549,7 +567,10 @@ with st.expander("📄 Upload Clinical Note", expanded=st.session_state.uploaded
 
         if is_pdf:
             preview_images = pdf_to_images(file_bytes)
-            st.caption(f"PDF — {len(preview_images)} page(s) loaded")
+            # Show real PDF page count (split halves are internal; don't confuse the user)
+            import fitz as _fitz
+            real_pages = len(_fitz.open(stream=file_bytes, filetype="pdf"))
+            st.caption(f"PDF — {real_pages} page(s) loaded")
             st.session_state.uploaded_image_bytes = preview_images
         else:
             st.session_state.uploaded_image_bytes = [(file_bytes, uploaded_file.type or "image/jpeg")]
