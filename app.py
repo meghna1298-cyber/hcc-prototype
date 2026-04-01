@@ -3,6 +3,7 @@ import pandas as pd
 import base64
 import os
 import json
+import time
 from datetime import datetime
 from openai import OpenAI
 import fitz  # PyMuPDF
@@ -157,14 +158,45 @@ def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
     return images
 
 
+def _call_openai(fn, retries: int = 3, initial_delay: float = 2.0):
+    """Call an OpenAI API function with automatic retries on transient JSON/HTTP errors.
+
+    The OpenAI Python client parses the raw HTTP response body as JSON internally.
+    When the Replit AI proxy returns an empty or malformed body (transient gateway
+    issue), the library itself throws json.JSONDecodeError before we can inspect
+    the content.  This wrapper catches that and retries up to `retries` times.
+    """
+    last_err = None
+    delay = initial_delay
+    for attempt in range(retries):
+        try:
+            return fn()
+        except Exception as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            is_transient = (
+                "expecting value" in msg or
+                "jsondecode" in msg or
+                "empty" in msg or
+                "connection" in msg or
+                "timeout" in msg
+            )
+            if is_transient and attempt < retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise
+    raise last_err
+
+
 def _safe_json(raw: str, fallback: dict) -> dict:
     """Parse JSON from an API response safely, with a regex fallback."""
+    import re
     if not raw or not raw.strip():
         return fallback
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        import re
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         if m:
             try:
@@ -196,14 +228,14 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         "Always respond with valid JSON even if the document has minimal content."
     )
 
-    vision_resp = openai_client.chat.completions.create(
+    vision_resp = _call_openai(lambda: openai_client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": [
             {"type": "text", "text": ocr_prompt},
             {"type": "image_url", "image_url": {"url": data_url}}
         ]}],
         max_completion_tokens=2048
-    )
+    ))
 
     raw_vision = (vision_resp.choices[0].message.content or "").strip()
     ocr_data = _safe_json(raw_vision, {
@@ -242,11 +274,11 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         "Use exact names from the list. Return an empty list if none match."
     )
 
-    match_resp = openai_client.chat.completions.create(
+    match_resp = _call_openai(lambda: openai_client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": match_prompt}],
         max_completion_tokens=1024
-    )
+    ))
 
     raw_match = (match_resp.choices[0].message.content or "").strip()
     match_data = _safe_json(raw_match, {"detected_conditions": []})
