@@ -157,31 +157,44 @@ def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
     return images
 
 
+def _safe_json(raw: str, fallback: dict) -> dict:
+    """Parse JSON from an API response safely, with a regex fallback."""
+    if not raw or not raw.strip():
+        return fallback
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        import re
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if m:
+            try:
+                return json.loads(m.group())
+            except Exception:
+                pass
+        return fallback
+
+
 def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
     b64_image = base64.b64encode(image_bytes).decode("utf-8")
     data_url = f"data:{mime_type};base64,{b64_image}"
 
-    # ── STEP 1: Lean vision call — OCR + raw clinical extraction only ──────────
-    # Keep this prompt short and image-focused; no long condition checklist.
-    ocr_prompt = """You are a medical transcriptionist. Read this clinical note (handwritten or printed) carefully.
+    empty_patient = {"patient_name": "", "date_of_birth": "", "mrn": "",
+                     "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""}
 
-Return JSON with these fields:
-{
-  "extracted_text": "<complete verbatim transcription of all text in the note>",
-  "raw_diagnoses": ["<each diagnosis, condition, or symptom as written>"],
-  "medications": ["<each medication name mentioned>"],
-  "clinical_summary": "<1-2 sentence clinical summary>",
-  "patient_details": {
-    "patient_name": "",
-    "date_of_birth": "",
-    "mrn": "",
-    "insurance_id": "",
-    "date_of_service": "",
-    "provider_name": "",
-    "practice_name": ""
-  }
-}
-Use empty string for any patient field not found. Be thorough with the transcription."""
+    # ── STEP 1: Lean vision call — OCR + raw clinical extraction only ──────────
+    ocr_prompt = (
+        "You are a medical transcriptionist. Read this clinical note carefully "
+        "(it may be handwritten, printed, or a prescription).\n\n"
+        "Return a JSON object with exactly these keys:\n"
+        "- extracted_text: complete verbatim transcription of all visible text\n"
+        "- raw_diagnoses: list of every diagnosis, condition, or symptom mentioned\n"
+        "- medications: list of every medication name mentioned\n"
+        "- clinical_summary: 1-2 sentence summary of the clinical content\n"
+        "- patient_details: object with keys patient_name, date_of_birth, mrn, "
+        "insurance_id, date_of_service, provider_name, practice_name "
+        "(use empty string for any field not found)\n\n"
+        "Always respond with valid JSON even if the document has minimal content."
+    )
 
     vision_resp = openai_client.chat.completions.create(
         model=AI_MODEL,
@@ -189,47 +202,60 @@ Use empty string for any patient field not found. Be thorough with the transcrip
             {"type": "text", "text": ocr_prompt},
             {"type": "image_url", "image_url": {"url": data_url}}
         ]}],
-        response_format={"type": "json_object"},
         max_completion_tokens=2048
     )
-    ocr_data = json.loads(vision_resp.choices[0].message.content)
+
+    raw_vision = (vision_resp.choices[0].message.content or "").strip()
+    ocr_data = _safe_json(raw_vision, {
+        "extracted_text": raw_vision,
+        "raw_diagnoses": [],
+        "medications": [],
+        "clinical_summary": "Could not parse structured response — raw text captured above.",
+        "patient_details": empty_patient
+    })
 
     # ── STEP 2: Text-only call — map clinical findings to V28_MAP keys ─────────
-    # No image = much faster. The condition list is sent here, not in the vision call.
     known_conditions = "\n".join(f"- {k}" for k in V28_MAP.keys())
-    extracted_text   = ocr_data.get("extracted_text", "")
-    raw_diagnoses    = ", ".join(ocr_data.get("raw_diagnoses", []))
-    medications      = ", ".join(ocr_data.get("medications", []))
+    extracted_text = ocr_data.get("extracted_text", "") or raw_vision
+    raw_diagnoses  = ", ".join(ocr_data.get("raw_diagnoses", []))
+    medications    = ", ".join(ocr_data.get("medications", []))
 
-    match_prompt = f"""You are a CMS-HCC Version 28 coding specialist.
+    # Only run step 2 if we have something to match against
+    if not (extracted_text or raw_diagnoses or medications).strip():
+        return {
+            "extracted_text": extracted_text,
+            "detected_conditions": [],
+            "clinical_summary": ocr_data.get("clinical_summary", ""),
+            "patient_details": ocr_data.get("patient_details", empty_patient)
+        }
 
-Given the clinical note content below, identify which conditions from the V28 list are present or clearly implied by the documentation.
-
-NOTE TEXT: {extracted_text}
-RAW DIAGNOSES: {raw_diagnoses}
-MEDICATIONS: {medications}
-
-V28 CONDITIONS:
-{known_conditions}
-
-Return JSON:
-{{"detected_conditions": ["<exact condition name from list>", ...]}}
-
-Only include conditions explicitly documented or strongly implied. Use exact names from the list."""
+    match_prompt = (
+        "You are a CMS-HCC Version 28 coding specialist.\n\n"
+        "Given the clinical note content below, identify which conditions from the V28 list "
+        "are present or clearly implied by the documentation.\n\n"
+        f"NOTE TEXT: {extracted_text}\n"
+        f"RAW DIAGNOSES: {raw_diagnoses}\n"
+        f"MEDICATIONS: {medications}\n\n"
+        f"V28 CONDITIONS:\n{known_conditions}\n\n"
+        'Return a JSON object: {"detected_conditions": ["<exact name from list>", ...]}\n'
+        "Only include conditions explicitly documented or strongly implied. "
+        "Use exact names from the list. Return an empty list if none match."
+    )
 
     match_resp = openai_client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": match_prompt}],
-        response_format={"type": "json_object"},
         max_completion_tokens=1024
     )
-    match_data = json.loads(match_resp.choices[0].message.content)
+
+    raw_match = (match_resp.choices[0].message.content or "").strip()
+    match_data = _safe_json(raw_match, {"detected_conditions": []})
 
     return {
-        "extracted_text":    ocr_data.get("extracted_text", ""),
+        "extracted_text":      ocr_data.get("extracted_text", ""),
         "detected_conditions": match_data.get("detected_conditions", []),
-        "clinical_summary":  ocr_data.get("clinical_summary", ""),
-        "patient_details":   ocr_data.get("patient_details", {})
+        "clinical_summary":    ocr_data.get("clinical_summary", ""),
+        "patient_details":     ocr_data.get("patient_details", empty_patient)
     }
 
 
