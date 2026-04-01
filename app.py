@@ -20,7 +20,7 @@ openai_client = OpenAI(
 st.set_page_config(layout="wide", page_title="V28 HCC AI Coder")
 
 V28_MAP = {
-    # ── DIABETES ──────────────────────────────────────────────────────────────
+    # ── DIABETES (Type 2 — E11) ───────────────────────────────────────────────
     "Diabetes without Complications": {"hcc": "37", "coef": 0.166, "icd10": "E11.9"},
     "Diabetes with Chronic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E11.40"},
     "Diabetes with Acute Complications": {"hcc": "19", "coef": 0.318, "icd10": "E11.00"},
@@ -28,6 +28,13 @@ V28_MAP = {
     "Diabetes with Peripheral Neuropathy": {"hcc": "38", "coef": 0.302, "icd10": "E11.40"},
     "Diabetes with Diabetic Nephropathy": {"hcc": "38", "coef": 0.302, "icd10": "E11.65"},
     "Diabetes with Ophthalmic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E11.39"},
+    # ── DIABETES (Type 1 — E10) ───────────────────────────────────────────────
+    "Type 1 Diabetes without Complications": {"hcc": "37", "coef": 0.166, "icd10": "E10.9"},
+    "Type 1 Diabetes with Hyperglycemia": {"hcc": "17", "coef": 0.560, "icd10": "E10.65"},
+    "Type 1 Diabetes with Ketoacidosis": {"hcc": "17", "coef": 0.560, "icd10": "E10.10"},
+    "Type 1 Diabetes with Chronic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E10.40"},
+    "Type 1 Diabetes with Nephropathy": {"hcc": "38", "coef": 0.302, "icd10": "E10.21"},
+    "Type 1 Diabetes with Ophthalmic Complications": {"hcc": "38", "coef": 0.302, "icd10": "E10.39"},
     # ── CHRONIC KIDNEY DISEASE ────────────────────────────────────────────────
     "CKD Stage 3a": {"hcc": "329", "coef": 0.165, "icd10": "N18.31"},
     "CKD Stage 3b": {"hcc": "328", "coef": 0.165, "icd10": "N18.32"},
@@ -266,6 +273,11 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
     # ICD category prefix guide helps the model match variants not in the exact lookup
     icd_prefix_guide = (
         "ICD CATEGORY MATCHING RULES (use when exact code not in lookup):\n"
+        "- E10.0xx–E10.9xx = Type 1 Diabetes variants. Match to the SINGLE most specific:\n"
+        "  E10.65 = Type 1 Diabetes with Hyperglycemia | E10.10 = Type 1 Diabetes with Ketoacidosis\n"
+        "  E10.40 = Type 1 Diabetes with Chronic Complications | E10.21 = Type 1 Diabetes with Nephropathy\n"
+        "  E10.39 = Type 1 Diabetes with Ophthalmic Complications\n"
+        "  E10.9 = Type 1 Diabetes without Complications (ONLY if no complication code present)\n"
         "- E11.0xx–E11.9xx = Type 2 Diabetes variants. Match to the SINGLE most specific:\n"
         "  E11.621 = Diabetic Foot Ulcer | E11.65 = Diabetes with Diabetic Nephropathy\n"
         "  E11.40 = Diabetes with Peripheral Neuropathy | E11.10 = Diabetes with Ketoacidosis\n"
@@ -415,20 +427,70 @@ def merge_ocr_results(results: list[dict]) -> dict:
     all_text, all_conditions, all_summaries = [], set(), []
     merged_patient = {"patient_name": "", "date_of_birth": "", "mrn": "",
                       "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""}
-    for r in results:
+    for i, r in enumerate(results):
         all_text.append(r.get("extracted_text", ""))
         all_conditions.update(r.get("detected_conditions", []))
         if r.get("clinical_summary"):
             all_summaries.append(r["clinical_summary"])
+        pd = r.get("patient_details", {})
+        print(f"[merge] crop {i} patient_details: {pd}")
         for field in merged_patient:
             if not merged_patient[field]:
-                merged_patient[field] = r.get("patient_details", {}).get(field, "")
+                val = pd.get(field, "")
+                if val:
+                    merged_patient[field] = val
+    print(f"[merge] final patient_details: {merged_patient}")
     return {
         "extracted_text": "\n\n--- Next Page ---\n\n".join(all_text),
         "detected_conditions": list(all_conditions),
         "clinical_summary": " ".join(all_summaries),
         "patient_details": merged_patient
     }
+
+
+def _recover_patient_details(merged: dict) -> dict:
+    """Text-only fallback: re-extract patient details from the combined extracted_text."""
+    text = merged.get("extracted_text", "")
+    if not text.strip():
+        return merged
+    pd = merged.get("patient_details", {})
+    missing = [f for f in ("patient_name", "date_of_birth", "mrn", "insurance_id") if not pd.get(f)]
+    if not missing:
+        return merged
+    print(f"[recover] patient details missing: {missing} — running text-only recovery")
+    recovery_prompt = (
+        "Extract the following patient header fields from the clinical document text below.\n"
+        "Return ONLY a JSON object with these exact keys (use empty string if not found):\n"
+        '{"patient_name": "", "date_of_birth": "", "mrn": "", "insurance_id": "", '
+        '"date_of_service": "", "provider_name": "", "practice_name": ""}\n\n'
+        "Rules:\n"
+        "- patient_name: the PATIENT's name (not the doctor/provider)\n"
+        "- date_of_birth: patient DOB\n"
+        "- mrn: medical record number or patient ID\n"
+        "- insurance_id: member ID, insurance ID, or policy number\n"
+        "- date_of_service: encounter or office visit date\n"
+        "- provider_name: prescribing physician or provider name\n"
+        "- practice_name: clinic, practice, or facility name\n\n"
+        f"DOCUMENT TEXT:\n{text[:3000]}"
+    )
+    try:
+        resp = _call_openai(lambda: openai_client.chat.completions.create(
+            model=AI_MODEL,
+            messages=[{"role": "user", "content": recovery_prompt}],
+            max_tokens=256,
+            temperature=0,
+        ))
+        recovered = _safe_json(resp.choices[0].message.content or "")
+        print(f"[recover] recovered: {recovered}")
+        if isinstance(recovered, dict):
+            for field in ("patient_name", "date_of_birth", "mrn", "insurance_id",
+                          "date_of_service", "provider_name", "practice_name"):
+                if not pd.get(field) and recovered.get(field):
+                    pd[field] = recovered[field]
+        merged["patient_details"] = pd
+    except Exception as e:
+        print(f"[recover] error: {e}")
+    return merged
 
 
 # --- Clarification message templates per condition ---
@@ -581,6 +643,7 @@ with st.expander("📄 Upload Clinical Note", expanded=st.session_state.uploaded
                 try:
                     page_results = [ocr_clinical_note(ib, mt) for ib, mt in st.session_state.uploaded_image_bytes]
                     merged = merge_ocr_results(page_results)
+                    merged = _recover_patient_details(merged)
                     st.session_state.ocr_result = merged
 
                     existing_terms = {d['term'] for d in st.session_state.hcc_data}
