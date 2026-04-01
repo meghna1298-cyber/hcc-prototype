@@ -213,131 +213,66 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
     empty_patient = {"patient_name": "", "date_of_birth": "", "mrn": "",
                      "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""}
 
-    # ── STEP 1: Vision call — full verbatim OCR of all text and tables ──────────
-    ocr_prompt = (
-        "You are performing OCR on a clinical document image. Your job is to read "
-        "EVERY piece of text visible in the image and transcribe it completely.\n\n"
-        "CRITICAL RULES:\n"
-        "1. The 'extracted_text' field MUST contain a verbatim transcription of ALL "
-        "text in the image — every word, number, code, header, table cell, and footnote. "
-        "Do NOT summarize, skip, or paraphrase anything. If there is a table, transcribe "
-        "every row and column.\n"
-        "2. Pay special attention to these sections if present:\n"
-        "   - Patient header block: name, date of birth, MRN, sex, insurance/group IDs\n"
-        "   - Prescribing physician and date fields\n"
-        "   - Active Diagnosis / ICD-10 code tables: transcribe every ICD code (e.g. "
-        "E11.65, I50.32, N18.3) AND its description text\n"
-        "   - Medications table: every drug name, dose, frequency, and notes\n"
-        "   - Clinical notes / supporting documentation paragraph\n"
-        "3. For patient_details, extract values directly from the document header.\n\n"
-        "Return a JSON object with exactly these keys:\n"
+    # Build lookup tables for the single unified call
+    known_conditions = "\n".join(f"- {k}" for k in V28_MAP.keys())
+    icd_lookup = "\n".join(
+        f"  {v['icd10']} = {k}" for k, v in V28_MAP.items() if v.get("icd10")
+    )
+
+    # ── SINGLE unified call: OCR + patient details + condition matching ──────────
+    prompt = (
+        "You are a CMS-HCC Version 28 clinical coding specialist performing OCR and "
+        "coding on this clinical document image.\n\n"
+        "Complete ALL three tasks using only what is visible in the image:\n\n"
+        "TASK 1 — OCR:\n"
+        "Read every visible ICD-10 code, diagnosis description, medication, patient "
+        "header field, date, and clinical note. Capture this in 'extracted_text'.\n\n"
+        "TASK 2 — Patient details:\n"
+        "Extract: patient name, date of birth, MRN, insurance/group ID, date of service, "
+        "prescribing provider name, and practice/facility name from the document header.\n\n"
+        "TASK 3 — HCC condition matching:\n"
+        "Match every diagnosis in the document to the V28 condition list below. "
+        "Match by ICD-10 code (e.g. E11.65, I50.32, N18.3) OR by condition name — "
+        "whichever appears in the document. Include ALL matching conditions.\n\n"
+        f"V28 CONDITIONS:\n{known_conditions}\n\n"
+        f"ICD-10 → V28 NAME LOOKUP:\n{icd_lookup}\n\n"
+        "Return a single JSON object:\n"
         "{\n"
-        '  "extracted_text": "<ALL text verbatim — must be comprehensive>",\n'
-        '  "raw_diagnoses": ["<each ICD code + description or diagnosis as written>"],\n'
-        '  "medications": ["<each medication name>"],\n'
+        '  "extracted_text": "<key clinical text: diagnoses, ICD codes, medications, notes>",\n'
+        '  "detected_conditions": ["<exact V28 condition name>", ...],\n'
         '  "clinical_summary": "<1-2 sentence clinical summary>",\n'
         '  "patient_details": {\n'
         '    "patient_name": "", "date_of_birth": "", "mrn": "",\n'
         '    "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""\n'
         "  }\n"
         "}\n\n"
-        "Always return valid JSON. Use empty string for any patient field not found."
+        "Rules: Only include detected_conditions that are explicitly documented or "
+        "strongly implied. Use exact names from the V28 CONDITIONS list. "
+        "Use empty string for any patient field not found. Always return valid JSON."
     )
 
-    vision_resp = _call_openai(lambda: openai_client.chat.completions.create(
+    resp = _call_openai(lambda: openai_client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": [
-            {"type": "text", "text": ocr_prompt},
+            {"type": "text",      "text": prompt},
             {"type": "image_url", "image_url": {"url": data_url}}
         ]}],
         max_completion_tokens=4096
     ))
 
-    raw_vision = (vision_resp.choices[0].message.content or "").strip()
-    ocr_data = _safe_json(raw_vision, {
-        "extracted_text": raw_vision,
-        "raw_diagnoses": [],
-        "medications": [],
-        "clinical_summary": "",
-        "patient_details": empty_patient
+    raw = (resp.choices[0].message.content or "").strip()
+    data = _safe_json(raw, {
+        "extracted_text":    raw,
+        "detected_conditions": [],
+        "clinical_summary":  "",
+        "patient_details":   empty_patient
     })
 
-    # ── STEP 2: Text-only call — map clinical findings to V28_MAP keys ─────────
-    known_conditions = "\n".join(f"- {k}" for k in V28_MAP.keys())
-    extracted_text = ocr_data.get("extracted_text", "") or raw_vision
-    raw_diagnoses  = ", ".join(ocr_data.get("raw_diagnoses", []))
-    medications    = ", ".join(ocr_data.get("medications", []))
-
-    # Only run step 2 if we have something to match against
-    if not (extracted_text or raw_diagnoses or medications).strip():
-        return {
-            "extracted_text": extracted_text,
-            "detected_conditions": [],
-            "clinical_summary": ocr_data.get("clinical_summary", ""),
-            "patient_details": ocr_data.get("patient_details", empty_patient)
-        }
-
-    # Build an ICD-10 → V28_MAP reverse lookup to help the model match codes directly
-    icd_lookup = "\n".join(
-        f"  {v['icd10']} = {k}" for k, v in V28_MAP.items() if v.get("icd10")
-    )
-
-    # Determine whether Step 1 gave us useful patient details
-    s1_patient = ocr_data.get("patient_details", {}) or {}
-    s1_has_details = any(s1_patient.get(f) for f in
-                         ["patient_name", "date_of_birth", "mrn", "insurance_id",
-                          "date_of_service", "provider_name", "practice_name"])
-
-    match_prompt = (
-        "You are a CMS-HCC Version 28 coding specialist.\n\n"
-        "TASK 1 — Condition matching:\n"
-        "Identify every condition from the V28 list that is present or clearly implied "
-        "by the note below. Match using EITHER the exact condition name OR the "
-        "associated ICD-10 code — whichever appears in the text.\n\n"
-        f"NOTE TEXT:\n{extracted_text}\n\n"
-        f"RAW DIAGNOSES: {raw_diagnoses}\n"
-        f"MEDICATIONS: {medications}\n\n"
-        f"V28 CONDITIONS (name → ICD-10):\n{known_conditions}\n\n"
-        f"ICD-10 REVERSE LOOKUP (code → V28 name):\n{icd_lookup}\n\n"
-        "TASK 2 — Patient details recovery:\n"
-        "Extract the following fields from the note text above. "
-        "Return empty string for any field not found.\n\n"
-        "Return a single JSON object with these keys:\n"
-        '{\n'
-        '  "detected_conditions": ["<exact V28 condition name>", ...],\n'
-        '  "patient_name": "",\n'
-        '  "date_of_birth": "",\n'
-        '  "mrn": "",\n'
-        '  "insurance_id": "",\n'
-        '  "date_of_service": "",\n'
-        '  "provider_name": "",\n'
-        '  "practice_name": ""\n'
-        '}\n\n'
-        "Only include conditions explicitly documented or strongly implied. "
-        "Use exact names from the V28 CONDITIONS list. Return an empty list if none match."
-    )
-
-    match_resp = _call_openai(lambda: openai_client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[{"role": "user", "content": match_prompt}],
-        max_completion_tokens=1500
-    ))
-
-    raw_match = (match_resp.choices[0].message.content or "").strip()
-    match_data = _safe_json(raw_match, {"detected_conditions": []})
-
-    # Merge patient details: prefer Step 1 (vision) values, fall back to Step 2 recovery
-    merged_patient = dict(empty_patient)
-    for field in empty_patient:
-        s2_val = match_data.get(field, "")
-        s1_val = s1_patient.get(field, "")
-        merged_patient[field] = s1_val or s2_val
-
     return {
-        "extracted_text":      ocr_data.get("extracted_text", ""),
-        "detected_conditions": match_data.get("detected_conditions", []),
-        "clinical_summary":    ocr_data.get("clinical_summary", ""),
-        "patient_details":     merged_patient
+        "extracted_text":      data.get("extracted_text", ""),
+        "detected_conditions": data.get("detected_conditions", []),
+        "clinical_summary":    data.get("clinical_summary", ""),
+        "patient_details":     data.get("patient_details", empty_patient)
     }
 
 
