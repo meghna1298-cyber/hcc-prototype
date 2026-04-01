@@ -219,6 +219,20 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         f"  {v['icd10']} = {k}" for k, v in V28_MAP.items() if v.get("icd10")
     )
 
+    # ICD category prefix guide helps the model match variants not in the exact lookup
+    icd_prefix_guide = (
+        "ICD CATEGORY MATCHING RULES (use when exact code not in lookup):\n"
+        "- E11.0xx–E11.9xx = Type 2 Diabetes variants. Match to the SINGLE most specific:\n"
+        "  E11.621 = Diabetic Foot Ulcer | E11.65 = Diabetes with Diabetic Nephropathy\n"
+        "  E11.40 = Diabetes with Peripheral Neuropathy | E11.10 = Diabetes with Ketoacidosis\n"
+        "  E11.39 = Diabetes with Ophthalmic Complications | E11.00 = Diabetes with Acute Complications\n"
+        "  E11.9 = Diabetes without Complications (ONLY if no complication code present)\n"
+        "- I70.2xx = Atherosclerosis of Extremities (I70.26x with gangrene → 'Atherosclerosis with Gangrene')\n"
+        "- L89.xx1/xx2 = Pressure Ulcer Stage 1/2 | L89.xx3 = Stage 3 | L89.xx4 = Stage 4\n"
+        "- N18.3xx = CKD Stage 3 | N18.4 = CKD Stage 4 | N18.5 = CKD Stage 5 | N18.6 = ESRD\n"
+        "- I50.2xx = Systolic Heart Failure | I50.3xx = Diastolic Heart Failure | I50.9 = CHF\n"
+    )
+
     # ── SINGLE unified call: OCR + patient details + condition matching ──────────
     prompt = (
         "You are a CMS-HCC Version 28 clinical coding specialist performing OCR and "
@@ -230,15 +244,18 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         "TASK 2 — Patient details:\n"
         "Extract: patient name, date of birth, MRN, insurance/group ID, date of service, "
         "prescribing provider name, and practice/facility name from the document header.\n\n"
-        "TASK 3 — HCC condition matching:\n"
-        "Match every diagnosis in the document to the V28 condition list below. "
-        "Match by ICD-10 code (e.g. E11.65, I50.32, N18.3) OR by condition name — "
-        "whichever appears in the document. Include ALL matching conditions.\n\n"
+        "TASK 3 — HCC condition matching (STRICT RULES):\n"
+        "For each ICD-10 code or diagnosis in the document, find the SINGLE most specific "
+        "matching condition in the V28 list. CRITICAL: do not return multiple similar "
+        "conditions for the same diagnosis (e.g. if E11.621 is documented, return ONLY "
+        "'Diabetic Foot Ulcer' — not 'Diabetes without Complications' or other diabetes variants). "
+        "If an ICD code is not in the exact lookup, use the category prefix guide below.\n\n"
         f"V28 CONDITIONS:\n{known_conditions}\n\n"
-        f"ICD-10 → V28 NAME LOOKUP:\n{icd_lookup}\n\n"
+        f"ICD-10 EXACT LOOKUP (code → V28 name):\n{icd_lookup}\n\n"
+        f"{icd_prefix_guide}\n"
         "Return a single JSON object:\n"
         "{\n"
-        '  "extracted_text": "<key clinical text: diagnoses, ICD codes, medications, notes>",\n'
+        '  "extracted_text": "<all ICD codes, diagnoses, medications, and clinical notes>",\n'
         '  "detected_conditions": ["<exact V28 condition name>", ...],\n'
         '  "clinical_summary": "<1-2 sentence clinical summary>",\n'
         '  "patient_details": {\n'
@@ -246,8 +263,8 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         '    "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""\n'
         "  }\n"
         "}\n\n"
-        "Rules: Only include detected_conditions that are explicitly documented or "
-        "strongly implied. Use exact names from the V28 CONDITIONS list. "
+        "Rules: Only include conditions explicitly documented. Use EXACT names from V28 CONDITIONS. "
+        "One condition per ICD code — most specific match only. "
         "Use empty string for any patient field not found. Always return valid JSON."
     )
 
