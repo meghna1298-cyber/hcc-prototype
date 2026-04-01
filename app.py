@@ -213,19 +213,35 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
     empty_patient = {"patient_name": "", "date_of_birth": "", "mrn": "",
                      "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""}
 
-    # ── STEP 1: Lean vision call — OCR + raw clinical extraction only ──────────
+    # ── STEP 1: Vision call — full verbatim OCR of all text and tables ──────────
     ocr_prompt = (
-        "You are a medical transcriptionist. Read this clinical note carefully "
-        "(it may be handwritten, printed, or a prescription).\n\n"
+        "You are performing OCR on a clinical document image. Your job is to read "
+        "EVERY piece of text visible in the image and transcribe it completely.\n\n"
+        "CRITICAL RULES:\n"
+        "1. The 'extracted_text' field MUST contain a verbatim transcription of ALL "
+        "text in the image — every word, number, code, header, table cell, and footnote. "
+        "Do NOT summarize, skip, or paraphrase anything. If there is a table, transcribe "
+        "every row and column.\n"
+        "2. Pay special attention to these sections if present:\n"
+        "   - Patient header block: name, date of birth, MRN, sex, insurance/group IDs\n"
+        "   - Prescribing physician and date fields\n"
+        "   - Active Diagnosis / ICD-10 code tables: transcribe every ICD code (e.g. "
+        "E11.65, I50.32, N18.3) AND its description text\n"
+        "   - Medications table: every drug name, dose, frequency, and notes\n"
+        "   - Clinical notes / supporting documentation paragraph\n"
+        "3. For patient_details, extract values directly from the document header.\n\n"
         "Return a JSON object with exactly these keys:\n"
-        "- extracted_text: complete verbatim transcription of all visible text\n"
-        "- raw_diagnoses: list of every diagnosis, condition, or symptom mentioned\n"
-        "- medications: list of every medication name mentioned\n"
-        "- clinical_summary: 1-2 sentence summary of the clinical content\n"
-        "- patient_details: object with keys patient_name, date_of_birth, mrn, "
-        "insurance_id, date_of_service, provider_name, practice_name "
-        "(use empty string for any field not found)\n\n"
-        "Always respond with valid JSON even if the document has minimal content."
+        "{\n"
+        '  "extracted_text": "<ALL text verbatim — must be comprehensive>",\n'
+        '  "raw_diagnoses": ["<each ICD code + description or diagnosis as written>"],\n'
+        '  "medications": ["<each medication name>"],\n'
+        '  "clinical_summary": "<1-2 sentence clinical summary>",\n'
+        '  "patient_details": {\n'
+        '    "patient_name": "", "date_of_birth": "", "mrn": "",\n'
+        '    "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""\n'
+        "  }\n"
+        "}\n\n"
+        "Always return valid JSON. Use empty string for any patient field not found."
     )
 
     vision_resp = _call_openai(lambda: openai_client.chat.completions.create(
@@ -234,7 +250,7 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
             {"type": "text", "text": ocr_prompt},
             {"type": "image_url", "image_url": {"url": data_url}}
         ]}],
-        max_completion_tokens=2048
+        max_completion_tokens=4096
     ))
 
     raw_vision = (vision_resp.choices[0].message.content or "").strip()
