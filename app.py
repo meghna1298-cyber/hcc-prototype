@@ -151,7 +151,7 @@ def pdf_to_images(pdf_bytes: bytes) -> list[tuple[bytes, str]]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     for page in doc:
-        mat = fitz.Matrix(2.0, 2.0)
+        mat = fitz.Matrix(3.0, 3.0)   # 3x zoom (216 DPI) for legibility on dense notes
         pix = page.get_pixmap(matrix=mat)
         images.append((pix.tobytes("png"), "image/png"))
     doc.close()
@@ -190,20 +190,46 @@ def _call_openai(fn, retries: int = 3, initial_delay: float = 2.0):
 
 
 def _safe_json(raw: str, fallback: dict) -> dict:
-    """Parse JSON from an API response safely, with a regex fallback."""
+    """Parse JSON from an API response safely, with multiple fallback strategies."""
     import re
     if not raw or not raw.strip():
         return fallback
+
+    # Strategy 1: direct parse
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        m = re.search(r'\{.*\}', raw, re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group())
-            except Exception:
-                pass
-        return fallback
+        pass
+
+    # Strategy 2: extract first complete {...} block
+    m = re.search(r'\{.*\}', raw, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group())
+        except Exception:
+            pass
+
+    # Strategy 3: truncated JSON recovery — try closing open brackets/braces
+    # Useful when max_completion_tokens cuts off the response mid-JSON
+    cleaned = raw.strip()
+    # Find the start of JSON
+    start = cleaned.find('{')
+    if start != -1:
+        partial = cleaned[start:]
+        # Count unclosed brackets to figure out what to append
+        opens = partial.count('{') - partial.count('}')
+        arr_opens = partial.count('[') - partial.count(']')
+        # Close any open string first (look for odd number of unescaped quotes)
+        quote_count = len(re.findall(r'(?<!\\)"', partial))
+        close_str = '"' if quote_count % 2 != 0 else ''
+        closing = close_str + (']' * max(arr_opens, 0)) + ('}' * max(opens, 0))
+        try:
+            return json.loads(partial + closing)
+        except Exception:
+            pass
+
+    print(f"[OCR DEBUG] _safe_json: all strategies failed. Raw prefix: {raw[:300]!r}")
+    return fallback
 
 
 def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
@@ -253,15 +279,16 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         f"V28 CONDITIONS:\n{known_conditions}\n\n"
         f"ICD-10 EXACT LOOKUP (code → V28 name):\n{icd_lookup}\n\n"
         f"{icd_prefix_guide}\n"
-        "Return a single JSON object:\n"
+        "Return a single JSON object — IMPORTANT: output fields in EXACTLY this order "
+        "so critical data is captured first if the response is long:\n"
         "{\n"
-        '  "extracted_text": "<all ICD codes, diagnoses, medications, and clinical notes>",\n'
         '  "detected_conditions": ["<exact V28 condition name>", ...],\n'
-        '  "clinical_summary": "<1-2 sentence clinical summary>",\n'
         '  "patient_details": {\n'
         '    "patient_name": "", "date_of_birth": "", "mrn": "",\n'
         '    "insurance_id": "", "date_of_service": "", "provider_name": "", "practice_name": ""\n'
-        "  }\n"
+        "  },\n"
+        '  "clinical_summary": "<1-2 sentence clinical summary>",\n'
+        '  "extracted_text": "<all ICD codes, diagnoses, medications, and clinical notes>"\n'
         "}\n\n"
         "Rules: Only include conditions explicitly documented. Use EXACT names from V28 CONDITIONS. "
         "One condition per ICD code — most specific match only. "
@@ -277,6 +304,10 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         max_completion_tokens=4096
     ))
 
+    finish_reason = resp.choices[0].finish_reason
+    if finish_reason == "length":
+        print(f"[OCR DEBUG] finish_reason=length — response was truncated! "
+              f"Consider increasing max_completion_tokens. Raw length: {len(resp.choices[0].message.content or '')}")
     raw = (resp.choices[0].message.content or "").strip()
     data = _safe_json(raw, {
         "extracted_text":    raw,
