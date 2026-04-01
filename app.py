@@ -242,7 +242,7 @@ def ocr_clinical_note(image_bytes: bytes, mime_type: str) -> dict:
         "extracted_text": raw_vision,
         "raw_diagnoses": [],
         "medications": [],
-        "clinical_summary": "Could not parse structured response — raw text captured above.",
+        "clinical_summary": "",
         "patient_details": empty_patient
     })
 
@@ -561,9 +561,15 @@ if st.session_state.ocr_result:
             st.markdown("**Transcribed Text:**")
             st.text_area("", value=res.get("extracted_text", ""), height=130, disabled=True, label_visibility="collapsed")
         with c2:
-            st.info(res.get("clinical_summary", ""))
-            for cond in res.get("detected_conditions", []):
-                st.success(f"✓ {cond}")
+            summary = res.get("clinical_summary", "").strip()
+            conditions = res.get("detected_conditions", [])
+            if summary:
+                st.info(summary)
+            if conditions:
+                for cond in conditions:
+                    st.success(f"✓ {cond}")
+            elif not summary:
+                st.warning("No HCC conditions detected. The document may be a cover page, blank form, or may not contain clinical diagnoses. Try uploading a page with patient diagnosis notes.")
 
 st.divider()
 
