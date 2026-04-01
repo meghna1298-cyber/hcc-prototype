@@ -672,7 +672,7 @@ if st.session_state.ocr_result:
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Transcribed Text:**")
-            st.text_area("", value=res.get("extracted_text", ""), height=130, disabled=True, label_visibility="collapsed")
+            st.text_area("Transcribed Text", value=res.get("extracted_text", ""), height=130, disabled=True, label_visibility="collapsed")
         with c2:
             summary = res.get("clinical_summary", "").strip()
             conditions = res.get("detected_conditions", [])
