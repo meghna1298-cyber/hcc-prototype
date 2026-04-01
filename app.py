@@ -433,13 +433,11 @@ def merge_ocr_results(results: list[dict]) -> dict:
         if r.get("clinical_summary"):
             all_summaries.append(r["clinical_summary"])
         pd = r.get("patient_details", {})
-        print(f"[merge] crop {i} patient_details: {pd}")
         for field in merged_patient:
             if not merged_patient[field]:
                 val = pd.get(field, "")
                 if val:
                     merged_patient[field] = val
-    print(f"[merge] final patient_details: {merged_patient}")
     return {
         "extracted_text": "\n\n--- Next Page ---\n\n".join(all_text),
         "detected_conditions": list(all_conditions),
@@ -457,7 +455,6 @@ def _recover_patient_details(merged: dict) -> dict:
     missing = [f for f in ("patient_name", "date_of_birth", "mrn", "insurance_id") if not pd.get(f)]
     if not missing:
         return merged
-    print(f"[recover] patient details missing: {missing} — running text-only recovery")
     recovery_prompt = (
         "Extract the following patient header fields from the clinical document text below.\n"
         "Return ONLY a JSON object with these exact keys (use empty string if not found):\n"
@@ -481,7 +478,6 @@ def _recover_patient_details(merged: dict) -> dict:
             temperature=0,
         ))
         recovered = _safe_json(resp.choices[0].message.content or "")
-        print(f"[recover] recovered: {recovered}")
         if isinstance(recovered, dict):
             for field in ("patient_name", "date_of_birth", "mrn", "insurance_id",
                           "date_of_service", "provider_name", "practice_name"):
