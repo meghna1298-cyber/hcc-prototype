@@ -91,7 +91,7 @@ Required environment variables (auto-injected by Replit AI Integrations):
 ## Demo
 
 - **Demo Video:** [meghna1298-cyber.github.io/hcc-prototype](https://meghna1298-cyber.github.io/hcc-prototype/)
-- **Live App:** [hcc-prototype.replit.app](https://hcc-prototype.replit.app)
+- **Live App:** https://hcc-prototype-1--meghna1298.replit.app/ 
 
 ---
 
